@@ -1,4 +1,4 @@
-"""Service that converts the research report into a podcast script."""
+"""将研究报告转换为播客脚本的服务。"""
 
 from __future__ import annotations
 
@@ -17,14 +17,22 @@ logger = logging.getLogger(__name__)
 
 
 class ScriptGenerationService:
-    """Generates a dialogue script from the research report."""
+    """从研究报告生成对话脚本。"""
 
     def __init__(self, script_agent: ToolAwareSimpleAgent, config: Configuration) -> None:
         self._agent = script_agent
         self._config = config
 
     def generate_script(self, state: SummaryState) -> List[dict[str, str]]:
-        """Generate a podcast script based on the structured report."""
+        """
+        基于结构化报告生成播客脚本。
+        
+        Args:
+            state: 包含结构化报告的研究状态。
+            
+        Returns:
+            对话脚本列表，每项包含 role 和 content。
+        """
 
         if not state.structured_report:
             logger.warning("No structured report available for script generation.")
@@ -40,13 +48,13 @@ class ScriptGenerationService:
         
         cleaned_response = response.strip()
         
-        # 1. Try to find markdown code block
+        # 1. 尝试查找 Markdown 代码块
         code_block_pattern = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
         match = code_block_pattern.search(cleaned_response)
         if match:
             cleaned_response = match.group(1).strip()
         else:
-            # 2. Try to find content between [ and ]
+            # 2. 尝试查找 [ 和 ] 之间的内容
             start = cleaned_response.find("[")
             end = cleaned_response.rfind("]")
             if start != -1 and end != -1 and end > start:
@@ -58,7 +66,7 @@ class ScriptGenerationService:
                 logger.error("Script generation output is not a list: %s", type(script))
                 return []
             
-            # Validate script format
+            # 验证脚本格式
             valid_script = []
             for item in script:
                 if isinstance(item, dict) and "role" in item and "content" in item:

@@ -22,7 +22,6 @@ DeepCast 旨在解决信息获取的"枯燥"问题，将严肃的深度研究报
     - 语音: `ecnu-tts`
 - **搜索服务**: 
     - 混合搜索 (Hybrid Search): Tavily + SerpApi (Google)
-    - 备用方案: DuckDuckGo
 - **音频处理**: Pydub, FFmpeg
 
 ## 🚀 快速开始

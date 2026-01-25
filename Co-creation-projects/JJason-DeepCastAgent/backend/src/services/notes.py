@@ -1,4 +1,4 @@
-"""Helpers for coordinating note tool usage instructions."""
+"""协调笔记工具使用说明的助手。"""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from models import TodoItem
 
 
 def build_note_guidance(task: TodoItem) -> str:
-    """Generate note tool usage guidance for a specific task."""
+    """为特定任务生成笔记工具使用说明。"""
 
     tags_list = ["deep_research", f"task_{task.id}"]
     tags_literal = json.dumps(tags_list, ensure_ascii=False)

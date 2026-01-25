@@ -1,4 +1,4 @@
-"""Search dispatch helpers leveraging HelloAgents SearchTool."""
+"""利用 HelloAgents SearchTool 的搜索分发助手。"""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ _GLOBAL_SEARCH_TOOL = None
 
 
 def get_global_search_tool(config: Configuration) -> SearchTool:
-    """Lazy initialization of the global search tool with API keys."""
+    """使用 API 密钥延迟初始化全局搜索工具。"""
     global _GLOBAL_SEARCH_TOOL
     if _GLOBAL_SEARCH_TOOL is None:
         _GLOBAL_SEARCH_TOOL = SearchTool(
@@ -37,7 +37,17 @@ def dispatch_search(
     config: Configuration,
     loop_count: int,
 ) -> Tuple[dict[str, Any] | None, list[str], Optional[str], str]:
-    """Execute configured search backend and normalise response payload."""
+    """
+    执行配置的搜索后端并标准化响应负载。
+    
+    Args:
+        query: 搜索查询字符串。
+        config: 包含搜索 API 配置的对象。
+        loop_count: 当前研究循环计数（用于分页或深度控制）。
+        
+    Returns:
+        元组 (原始负载, 通知列表, 答案文本, 后端标签)。
+    """
 
     search_api = get_config_value(config.search_api)
     search_tool = get_global_search_tool(config)
@@ -95,7 +105,17 @@ def prepare_research_context(
     answer_text: Optional[str],
     config: Configuration,
 ) -> tuple[str, str]:
-    """Build structured context and source summary for downstream agents."""
+    """
+    为下游代理构建结构化上下文和来源摘要。
+    
+    Args:
+        search_result: 搜索后端返回的原始结果字典。
+        answer_text: 搜索后端直接生成的答案（如果有）。
+        config: 配置对象。
+        
+    Returns:
+        元组 (来源摘要列表, 详细上下文文本)。
+    """
 
     sources_summary = format_sources(search_result)
     context = deduplicate_and_format_sources(

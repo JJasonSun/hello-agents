@@ -1,4 +1,4 @@
-"""Service that consolidates task results into the final report."""
+"""将任务结果整合为最终报告的服务。"""
 
 from __future__ import annotations
 
@@ -13,14 +13,22 @@ from services.text_processing import strip_tool_calls
 
 
 class ReportingService:
-    """Generates the final structured report."""
+    """生成最终的结构化报告。"""
 
     def __init__(self, report_agent: ToolAwareSimpleAgent, config: Configuration) -> None:
         self._agent = report_agent
         self._config = config
 
     def generate_report(self, state: SummaryState) -> str:
-        """Generate a structured report based on completed tasks."""
+        """
+        基于完成的任务生成结构化报告。
+        
+        Args:
+            state: 包含任务结果和笔记的研究状态。
+            
+        Returns:
+            Markdown 格式的报告文本。
+        """
 
         tasks_block = []
         for task in state.todo_items:

@@ -1,4 +1,4 @@
-"""Utility for collecting and exposing tool call events."""
+"""用于收集和暴露工具调用事件的实用程序。"""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ToolCallEvent:
-    """Internal representation of a tool call event."""
+    """工具调用事件的内部表示。"""
 
     id: int
     agent: str
@@ -29,7 +29,7 @@ class ToolCallEvent:
 
 
 class ToolCallTracker:
-    """Collects tool call events and converts them to SSE payloads."""
+    """收集工具调用事件并将其转换为 SSE 负载。"""
 
     def __init__(self, notes_workspace: Optional[str]) -> None:
         self._notes_workspace = notes_workspace
@@ -39,7 +39,12 @@ class ToolCallTracker:
         self._event_sink: Optional[Callable[[dict[str, Any]], None]] = None
 
     def record(self, payload: dict[str, Any]) -> None:
-        """记录模型工具调用情况，便于日志与前端展示。"""
+        """
+        记录模型工具调用情况，便于日志与前端展示。
+        
+        Args:
+            payload: 工具调用事件负载，包含工具名、参数和结果。
+        """
 
         agent_name = str(payload.get("agent_name") or "unknown")
         tool_name = str(payload.get("tool_name") or "unknown")
@@ -86,10 +91,22 @@ class ToolCallTracker:
             sink(self._build_payload(event, step=None))
 
     # ------------------------------------------------------------------
-    # Draining helpers
+    # 排放助手
     # ------------------------------------------------------------------
     def drain(self, state: SummaryState, *, step: Optional[int] = None) -> list[dict[str, Any]]:
-        """提取尚未消费的工具调用事件，并同步任务的 note_id。"""
+        """
+        提取尚未消费的工具调用事件，并同步任务的 note_id。
+        
+        此方法是线程安全的，会移除已提取的事件，避免重复处理。
+        同时会检查 note 工具的调用，更新任务状态中的 note_id。
+        
+        Args:
+            state: 当前研究状态。
+            step: 可选的步骤编号，附加到返回的事件中。
+            
+        Returns:
+            准备发送给前端的事件字典列表。
+        """
 
         with self._lock:
             if self._cursor >= len(self._events):
@@ -113,14 +130,22 @@ class ToolCallTracker:
         return payloads
 
     def reset(self) -> None:
-        """Clear recorded events."""
-
+        """
+        清除记录的工具调用事件。
+        
+        此方法是线程安全的，确保在多线程环境中安全调用。
+        """
         with self._lock:
             self._events.clear()
             self._cursor = 0
 
     def as_dicts(self) -> list[dict[str, Any]]:
-        """Expose a snapshot of raw events for backwards compatibility."""
+        """
+        暴露原始事件的快照以实现向后兼容性。
+        
+        Returns:
+            包含所有工具调用事件的字典列表。
+        """
 
         with self._lock:
             return [
@@ -138,7 +163,12 @@ class ToolCallTracker:
             ]
 
     def set_event_sink(self, sink: Optional[Callable[[dict[str, Any]], None]]) -> None:
-        """Register a callback for immediate tool event notifications."""
+        """
+        注册一个回调以获取即时工具事件通知。
+        
+        Args:
+            sink: 接收事件字典的回调函数。
+        """
 
         self._event_sink = sink
 
@@ -161,10 +191,10 @@ class ToolCallTracker:
         return payload
 
     # ------------------------------------------------------------------
-    # Internal helpers
+    # 内部助手
     # ------------------------------------------------------------------
     def _attach_note_to_task(self, tasks: list[TodoItem], task_id: int, note_id: str) -> None:
-        """Update matching TODO item with note metadata."""
+        """使用笔记元数据更新匹配的 TODO 项目。"""
 
         for task in tasks:
             if task.id != task_id:

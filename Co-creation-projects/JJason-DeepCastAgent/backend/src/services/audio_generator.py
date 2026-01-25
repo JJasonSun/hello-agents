@@ -1,4 +1,4 @@
-"""Service for generating audio from text using TTS API."""
+"""使用 TTS API 从文本生成音频的服务。"""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class AudioGenerationService:
-    """Handles interaction with TTS service to generate audio files."""
+    """处理与 TTS 服务的交互以生成音频文件。"""
 
     def __init__(self, config: Configuration) -> None:
         self._config = config
@@ -23,7 +23,11 @@ class AudioGenerationService:
         self._ensure_output_dir()
 
     def _ensure_output_dir(self) -> None:
-        """Create output directory if it doesn't exist."""
+        """
+        如果输出目录不存在，则创建它。
+        
+        同时处理创建目录时的潜在权限错误。
+        """
         if not self._output_dir.exists():
             try:
                 self._output_dir.mkdir(parents=True, exist_ok=True)
@@ -33,14 +37,14 @@ class AudioGenerationService:
 
     def generate_audio(self, script: List[dict[str, str]], task_id: str = "default") -> List[str]:
         """
-        Generate audio files for a given script.
+        为给定的脚本生成音频文件。
         
         Args:
-            script: List of dialogue turns, e.g. [{"role": "Host", "content": "..."}, ...]
-            task_id: Unique identifier for the current task/session
+            script: 对话回合列表，例如 [{"role": "Host", "content": "..."}, ...]
+            task_id: 当前任务/会话的唯一标识符
             
         Returns:
-            List of paths to generated audio files
+            生成的音频文件的路径列表
         """
         # 检查FFmpeg路径是否配置
         if not self._config.ffmpeg_path:
@@ -76,7 +80,15 @@ class AudioGenerationService:
         return generated_files
 
     def _get_voice_for_role(self, role: str) -> str:
-        """Map role names to voice IDs."""
+        """
+        将角色名称映射到语音 ID。
+        
+        Args:
+            role: 角色名称（如 Host, Guest）。
+            
+        Returns:
+            对应的语音 ID（xiayu 或 liwa）。
+        """
         role_lower = role.lower()
         if "host" in role_lower or "xiayu" in role_lower:
             return "xiayu"
@@ -85,7 +97,17 @@ class AudioGenerationService:
         return "xiayu"
 
     def _call_tts_api(self, text: str, voice: str, output_path: Path) -> bool:
-        """Call the TTS API and save the audio file."""
+        """
+        调用 TTS API 并保存音频文件。
+        
+        Args:
+            text: 要转换的文本。
+            voice: 语音 ID。
+            output_path: 输出文件路径。
+            
+        Returns:
+            如果成功生成并保存，返回 True；否则返回 False。
+        """
         if output_path.exists():
             logger.debug("Audio file already exists: %s", output_path)
             return True

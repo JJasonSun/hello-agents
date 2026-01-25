@@ -1,4 +1,4 @@
-"""DeepCast - Automated Podcast Generation Agent powered by HelloAgents."""
+"""DeepCast - 由 HelloAgents 驱动的自动播客生成代理。"""
 
 __version__ = "0.0.1"
 

@@ -1,7 +1,7 @@
 from datetime import datetime
 
 
-# Get current date in a readable format
+# 以可读格式获取当前日期
 def get_current_date():
     return datetime.now().strftime("%B %d, %Y")
 
@@ -56,7 +56,8 @@ todo_planner_instructions = """
 }}
 </FORMAT>
 
-如果主题信息不足以规划任务，请输出空数组：{{"tasks": []}}。必要时使用笔记工具记录你的思考过程。
+即使主题较为模糊或开放（例如“聊聊XX的未来”），也请不要放弃！请基于行业常识和通用研究框架（如：技术原理、应用场景、市场影响、潜在挑战、竞品对比等）主动构建 3-5 个合理的探索性任务。
+请确保输出的 JSON 格式正确，不要输出空数组。
 """
 
 
@@ -75,7 +76,8 @@ task_summarizer_instructions = """
 </NOTES>
 
 <FORMAT>
-- 使用 Markdown 输出；
+- **直接**输出 Markdown 格式的总结内容。
+- **严禁**包含任何自我陈述、规划或废话（如“我将...”、“基于...”）。
 - 以小节标题开头："任务总结"；
 - 关键发现使用有序或无序列表表达；
 - 若任务无有效结果，输出"暂无可用信息"。

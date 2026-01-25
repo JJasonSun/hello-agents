@@ -1,4 +1,4 @@
-"""Orchestrator coordinating the deep research workflow."""
+"""协调深度研究工作流的编排器。"""
 
 from __future__ import annotations
 
@@ -34,12 +34,14 @@ logger = logging.getLogger(__name__)
 
 
 class DeepResearchAgent:
-    """Coordinator orchestrating TODO-based research workflow using HelloAgents."""
+    """使用 HelloAgents 协调基于 TODO 的研究工作流的协调器。"""
 
     def __init__(self, config: Configuration | None = None) -> None:
-        """Initialise the coordinator with configuration and shared tools."""
+        """使用配置和共享工具初始化协调器。"""
         self.config = config or Configuration.from_env()
-        self.llm = self._init_llm()
+        self.default_llm = self._init_llm(self.config.llm_model_id)
+        self.smart_llm = self._init_llm(self.config.smart_llm_model)
+        self.fast_llm = self._init_llm(self.config.fast_llm_model)
 
         self.note_tool = (
             NoteTool(workspace=self.config.notes_workspace)
@@ -61,19 +63,23 @@ class DeepResearchAgent:
         self.todo_agent = self._create_tool_aware_agent(
             name="研究规划专家",
             system_prompt=todo_planner_system_prompt.strip(),
+            llm=self.smart_llm,
         )
         self.report_agent = self._create_tool_aware_agent(
             name="报告撰写专家",
             system_prompt=report_writer_instructions.strip(),
+            llm=self.smart_llm,
         )
         self.script_agent = self._create_tool_aware_agent(
             name="脚本策划专家",
             system_prompt=script_writer_instructions.strip(),
+            llm=self.default_llm,
         )
 
         self._summarizer_factory: Callable[[], ToolAwareSimpleAgent] = lambda: self._create_tool_aware_agent(  # noqa: E501
             name="任务总结专家",
             system_prompt=task_summarizer_instructions.strip(),
+            llm=self.fast_llm,
         )
 
         self.planner = PlanningService(self.todo_agent, self.config)
@@ -86,13 +92,13 @@ class DeepResearchAgent:
         self._last_search_notices: list[str] = []
 
     # ------------------------------------------------------------------
-    # Public API
+    # 公共 API
     # ------------------------------------------------------------------
-    def _init_llm(self) -> HelloAgentsLLM:
-        """Instantiate HelloAgentsLLM following configuration preferences."""
+    def _init_llm(self, model_id_override: str | None = None) -> HelloAgentsLLM:
+        """根据配置偏好实例化 HelloAgentsLLM。"""
         llm_kwargs: dict[str, Any] = {"temperature": 0.0}
 
-        model_id = self.config.llm_model_id or self.config.local_llm
+        model_id = model_id_override or self.config.llm_model_id
         if model_id:
             llm_kwargs["model"] = model_id
 
@@ -100,29 +106,18 @@ class DeepResearchAgent:
         if provider:
             llm_kwargs["provider"] = provider
 
-        if provider == "ollama":
-            llm_kwargs["base_url"] = self.config.sanitized_ollama_url()
-            if self.config.llm_api_key:
-                llm_kwargs["api_key"] = self.config.llm_api_key
-            else:
-                llm_kwargs["api_key"] = "ollama"
-        elif provider == "lmstudio":
-            llm_kwargs["base_url"] = self.config.lmstudio_base_url
-            if self.config.llm_api_key:
-                llm_kwargs["api_key"] = self.config.llm_api_key
-        else:
-            if self.config.llm_base_url:
-                llm_kwargs["base_url"] = self.config.llm_base_url
-            if self.config.llm_api_key:
-                llm_kwargs["api_key"] = self.config.llm_api_key
+        if self.config.llm_base_url:
+            llm_kwargs["base_url"] = self.config.llm_base_url
+        if self.config.llm_api_key:
+            llm_kwargs["api_key"] = self.config.llm_api_key
 
         return HelloAgentsLLM(**llm_kwargs)
 
-    def _create_tool_aware_agent(self, *, name: str, system_prompt: str) -> ToolAwareSimpleAgent:
-        """Instantiate a ToolAwareSimpleAgent sharing tool registry and tracker."""
+    def _create_tool_aware_agent(self, *, name: str, system_prompt: str, llm: HelloAgentsLLM) -> ToolAwareSimpleAgent:
+        """实例化共享工具注册表和跟踪器的 ToolAwareSimpleAgent。"""
         return ToolAwareSimpleAgent(
             name=name,
-            llm=self.llm,
+            llm=llm,
             system_prompt=system_prompt,
             enable_tool_calling=self.tools_registry is not None,
             tool_registry=self.tools_registry,
@@ -130,12 +125,21 @@ class DeepResearchAgent:
         )
 
     def _set_tool_event_sink(self, sink: Callable[[dict[str, Any]], None] | None) -> None:
-        """Enable or disable immediate tool event callbacks."""
+        """启用或禁用立即工具事件回调。"""
         self._tool_event_sink_enabled = sink is not None
         self._tool_tracker.set_event_sink(sink)
 
     def run(self, topic: str) -> SummaryStateOutput:
-        """Execute the research workflow and return the final report."""
+        """
+        执行研究工作流并返回最终报告（同步模式）。
+        
+        此方法按顺序执行以下步骤：
+        1. 初始化状态和规划任务。
+        2. 串行执行每个任务（搜索 + 总结）。
+        3. 生成最终报告。
+        4. 生成播客脚本。
+        5. 生成音频文件并合成播客。
+        """
         state = SummaryState(research_topic=topic)
         state.todo_items = self.planner.plan_todo_list(state)
         self._drain_tool_events(state)
@@ -158,11 +162,11 @@ class DeepResearchAgent:
         self._drain_tool_events(state)
         state.podcast_script = script
 
-        # Generate audio for the script
+        # 为脚本生成音频
         task_id = f"task_{state.report_note_id}" if state.report_note_id else "task_default"
         audio_files = self.audio_generator.generate_audio(script, task_id)
 
-        # Synthesize podcast
+        # 合成播客
         podcast_file = self.podcast_synthesizer.synthesize_podcast(audio_files, task_id)
         
         return SummaryStateOutput(
@@ -173,7 +177,17 @@ class DeepResearchAgent:
         )
 
     def run_stream(self, topic: str) -> Iterator[dict[str, Any]]:
-        """Execute the workflow yielding incremental progress events."""
+        """
+        执行研究工作流并产生增量进度事件（流式模式）。
+        
+        此方法使用多线程并行执行研究任务，并通过生成器实时返回进度。
+        主要步骤：
+        1. 初始化并规划任务。
+        2. 为每个任务启动一个工作线程进行并行处理。
+        3. 实时流式传输任务状态、搜索结果和部分总结。
+        4. 所有任务完成后，生成并流式传输最终报告。
+        5. 生成并流式传输播客脚本和音频合成进度。
+        """
         state = SummaryState(research_topic=topic)
         logger.debug("Starting streaming research: topic=%s", topic)
         yield {"type": "status", "message": "初始化研究流程"}
@@ -190,9 +204,13 @@ class DeepResearchAgent:
             task.stream_token = token
             channel_map[task.id] = {"step": index, "token": token}
 
+        # 确保在开始多线程任务前，显式发送 todo_list 事件
+        # 使用 list comprehension 确保 task 被正确序列化
+        serialized_tasks = [self._serialize_task(t) for t in state.todo_items]
+        logger.info(f"Emitting todo_list event with {len(serialized_tasks)} tasks")
         yield {
             "type": "todo_list",
-            "tasks": [self._serialize_task(t) for t in state.todo_items],
+            "tasks": serialized_tasks,
             "step": 0,
         }
 
@@ -311,7 +329,7 @@ class DeepResearchAgent:
         script = self.script_generator.generate_script(state)
         for event in self._drain_tool_events(state):
             yield event
-        state.podcast_script = PodcastScript(script=script)
+        state.podcast_script = script
         yield {
             "type": "podcast_script",
             "script": script,
@@ -336,7 +354,7 @@ class DeepResearchAgent:
         yield {"type": "done"}
 
     # ------------------------------------------------------------------
-    # Execution helpers
+    # 执行助手
     # ------------------------------------------------------------------
     def _execute_task(
         self,
@@ -346,7 +364,18 @@ class DeepResearchAgent:
         emit_stream: bool,
         step: int | None = None,
     ) -> Iterator[dict[str, Any]]:
-        """Run search + summarization for a single task."""
+        """
+        对单个任务运行搜索 + 总结逻辑。
+        
+        Args:
+            state: 全局研究状态。
+            task: 当前要执行的任务项。
+            emit_stream: 是否产生流式事件（True 用于 run_stream，False 用于 run）。
+            step: 当前步骤编号（仅用于流式事件）。
+            
+        Returns:
+            事件字典的迭代器（即使 emit_stream=False，也可能产生少量内部事件，通常被忽略）。
+        """
         task.status = "in_progress"
 
         search_result, notices, answer_text, backend = dispatch_search(
@@ -470,7 +499,7 @@ class DeepResearchAgent:
         *,
         step: int | None = None,
     ) -> list[dict[str, Any]]:
-        """Proxy to the shared tool call tracker."""
+        """共享工具调用跟踪器的代理。"""
         events = self._tool_tracker.drain(state, step=step)
         if self._tool_event_sink_enabled:
             return []
@@ -478,11 +507,11 @@ class DeepResearchAgent:
 
     @property
     def _tool_call_events(self) -> list[dict[str, Any]]:
-        """Expose recorded tool events for legacy integrations."""
+        """为旧版集成暴露记录的工具事件。"""
         return self._tool_tracker.as_dicts()
 
     def _serialize_task(self, task: TodoItem) -> dict[str, Any]:
-        """Convert task dataclass to serializable dict for frontend."""
+        """将任务数据类转换为前端可序列化的字典。"""
         return {
             "id": task.id,
             "title": task.title,
@@ -555,6 +584,18 @@ class DeepResearchAgent:
         return payload
 
     def _find_existing_report_note_id(self, state: SummaryState) -> str | None:
+        """
+        查找与研究主题相关的现有报告笔记 ID。
+        
+        此方法检查当前状态是否已关联报告笔记 ID。如果没有，它会遍历已记录的工具事件，
+        查找最近创建或更新的结论类型笔记，标题中包含研究主题的报告。
+        
+        Args:
+            state: 当前研究状态，包含研究主题和已记录的工具事件。
+            
+        Returns:
+            与研究主题相关的现有报告笔记 ID（如果存在），否则为 None。
+        """
         if state.report_note_id:
             return state.report_note_id
 
@@ -598,6 +639,6 @@ class DeepResearchAgent:
 
 
 def run_deep_research(topic: str, config: Configuration | None = None) -> SummaryStateOutput:
-    """Convenience function mirroring the class-based API."""
+    """镜像基于类的 API 的便捷函数。"""
     agent = DeepResearchAgent(config=config)
     return agent.run(topic)

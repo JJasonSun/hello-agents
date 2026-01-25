@@ -1,14 +1,19 @@
-"""FastAPI entrypoint exposing the DeepResearchAgent via HTTP."""
+"""通过 HTTP 暴露 DeepResearchAgent 的 FastAPI 入口点。"""
 
 from __future__ import annotations
 
 import json
+import os
 import sys
 from typing import Any, Dict, Iterator, Optional
+
+# Ensure src directory is in sys.path for module imports
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 from pydantic import BaseModel, Field
 
@@ -34,37 +39,37 @@ logger.add(
 
 
 class ResearchRequest(BaseModel):
-    """Payload for triggering a research run."""
+    """触发研究运行的负载。"""
 
-    topic: str = Field(..., description="Research topic supplied by the user")
+    topic: str = Field(..., description="用户提供的研究主题")
     search_api: SearchAPI | None = Field(
         default=None,
-        description="Override the default search backend configured via env",
+        description="覆盖通过环境变量配置的默认搜索后端",
     )
 
 class PodcastScript(BaseModel):
-    """Model for podcast script content."""
-    script: str = Field(..., description="Generated podcast script content")
+    """播客脚本内容模型。"""
+    script: str = Field(..., description="生成的播客脚本内容")
 
 
 class ResearchResponse(BaseModel):
-    """HTTP response containing the generated report and structured tasks."""
+    """包含生成报告和结构化任务的 HTTP 响应。"""
 
     report_markdown: str = Field(
-        ..., description="Markdown-formatted research report including sections"
+        ..., description="Markdown 格式的研究报告，包含各个部分"
     )
     todo_items: list[dict[str, Any]] = Field(
         default_factory=list,
-        description="Structured TODO items with summaries and sources",
+        description="带有摘要和来源的结构化待办事项",
     )
     podcast_script: Optional[PodcastScript] = Field(
         default=None,
-        description="Generated podcast script content",
+        description="生成的播客脚本内容",
     )
 
 
 def _mask_secret(value: Optional[str], visible: int = 4) -> str:
-    """Mask sensitive tokens while keeping leading and trailing characters."""
+    """在保持前导和尾随字符的同时，掩盖敏感令牌。"""
     if not value:
         return "unset"
 
@@ -84,7 +89,7 @@ def _build_config(payload: ResearchRequest) -> Configuration:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="DeepCast - Automated Podcast Generation Agent")
+    app = FastAPI(title="DeepCast - 自动播客生成智能体")
 
     app.add_middleware(
         CORSMiddleware,
@@ -94,8 +99,18 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # 确保输出目录存在
+    # 使用绝对路径，基于 backend 根目录
+    backend_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    output_dir = os.path.join(backend_root, "output")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # 挂载静态文件目录，用于访问生成的音频文件
+    app.mount("/output", StaticFiles(directory=output_dir), name="output")
+
     @app.on_event("startup")
     def log_startup_configuration() -> None:
+        """记录启动时的关键配置参数。"""
         config = Configuration.from_env()
 
         if config.llm_provider == "ollama":
@@ -125,6 +140,11 @@ def create_app() -> FastAPI:
 
     @app.post("/research", response_model=ResearchResponse)
     def run_research(payload: ResearchRequest) -> ResearchResponse:
+        """
+        触发同步研究任务。
+        
+        执行完整的研究流程，并在 HTTP 响应中一次性返回所有结果。
+        """
         try:
             config = _build_config(payload)
             agent = DeepResearchAgent(config=config)
@@ -160,6 +180,11 @@ def create_app() -> FastAPI:
 
     @app.post("/research/stream")
     def stream_research(payload: ResearchRequest) -> StreamingResponse:
+        """
+        触发流式研究任务。
+        
+        通过 Server-Sent Events (SSE) 实时返回研究进度、日志和部分结果。
+        """
         try:
             config = _build_config(payload)
             agent = DeepResearchAgent(config=config)

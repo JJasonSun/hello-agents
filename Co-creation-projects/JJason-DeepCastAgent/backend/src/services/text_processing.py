@@ -1,4 +1,4 @@
-"""Utility helpers for normalizing agent generated text."""
+"""用于标准化代理生成文本的实用助手。"""
 
 from __future__ import annotations
 

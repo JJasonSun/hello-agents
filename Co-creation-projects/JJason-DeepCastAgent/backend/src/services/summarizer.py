@@ -1,4 +1,4 @@
-"""Task summarization utilities."""
+"""任务总结工具。"""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from services.text_processing import strip_tool_calls
 
 
 class SummarizationService:
-    """Handles synchronous and streaming task summarization."""
+    """处理同步和流式任务总结。"""
 
     def __init__(
         self,
@@ -26,7 +26,7 @@ class SummarizationService:
         self._config = config
 
     def summarize_task(self, state: SummaryState, task: TodoItem, context: str) -> str:
-        """Generate a task-specific summary using the summarizer agent."""
+        """使用总结代理生成特定于任务的总结。"""
 
         prompt = self._build_prompt(state, task, context)
 
@@ -47,7 +47,7 @@ class SummarizationService:
     def stream_task_summary(
         self, state: SummaryState, task: TodoItem, context: str
     ) -> Tuple[Iterator[str], Callable[[], str]]:
-        """Stream the summary text for a task while collecting full output."""
+        """流式传输任务的总结文本，同时收集完整输出。"""
 
         prompt = self._build_prompt(state, task, context)
         remove_thinking = self._config.strip_thinking_tokens
@@ -57,6 +57,10 @@ class SummarizationService:
         agent = self._agent_factory()
 
         def flush_visible() -> Iterator[str]:
+            """
+            处理缓冲区，提取并 yield 所有不在 <think>...</think> 块中的可见文本。
+            如果遇到不完整的 <think> 标签，会暂停输出等待更多数据。
+            """
             nonlocal emit_index, raw_buffer
             while True:
                 start = raw_buffer.find("<think>", emit_index)
@@ -112,7 +116,7 @@ class SummarizationService:
         return generator(), get_summary
 
     def _build_prompt(self, state: SummaryState, task: TodoItem, context: str) -> str:
-        """Construct the summarization prompt shared by both modes."""
+        """构建两种模式共享的总结提示。"""
 
         return (
             f"任务主题：{state.research_topic}\n"
