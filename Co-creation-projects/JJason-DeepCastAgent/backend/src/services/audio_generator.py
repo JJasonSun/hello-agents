@@ -108,7 +108,7 @@ class AudioGenerationService:
                 self._config.tts_base_url,
                 json=payload,
                 headers=headers,
-                timeout=30 # TTS generation might take some time
+                timeout=300
             )
             
             if response.status_code == 200:

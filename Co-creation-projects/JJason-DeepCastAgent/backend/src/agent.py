@@ -66,6 +66,10 @@ class DeepResearchAgent:
             name="报告撰写专家",
             system_prompt=report_writer_instructions.strip(),
         )
+        self.script_agent = self._create_tool_aware_agent(
+            name="脚本策划专家",
+            system_prompt=script_writer_instructions.strip(),
+        )
 
         self._summarizer_factory: Callable[[], ToolAwareSimpleAgent] = lambda: self._create_tool_aware_agent(  # noqa: E501
             name="任务总结专家",
@@ -75,8 +79,9 @@ class DeepResearchAgent:
         self.planner = PlanningService(self.todo_agent, self.config)
         self.summarizer = SummarizationService(self._summarizer_factory, self.config)
         self.reporting = ReportingService(self.report_agent, self.config)
-        self.script_generator = ScriptGenerationService(self.llm, self.config)
+        self.script_generator = ScriptGenerationService(self.script_agent, self.config)
         self.audio_generator = AudioGenerationService(self.config)
+
         self.podcast_synthesizer = PodcastSynthesisService(self.config)
         self._last_search_notices: list[str] = []
 
@@ -140,7 +145,8 @@ class DeepResearchAgent:
             state.todo_items = [self.planner.create_fallback_task(state)]
 
         for task in state.todo_items:
-            self._execute_task(state, task, emit_stream=False)
+            for _ in self._execute_task(state, task, emit_stream=False):
+                pass
 
         report = self.reporting.generate_report(state)
         self._drain_tool_events(state)

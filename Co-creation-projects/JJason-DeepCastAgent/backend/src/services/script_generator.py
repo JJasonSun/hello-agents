@@ -11,7 +11,6 @@ from hello_agents import ToolAwareSimpleAgent
 
 from models import SummaryState
 from config import Configuration
-from prompts import script_writer_instructions
 from utils import strip_thinking_tokens
 
 logger = logging.getLogger(__name__)
@@ -31,7 +30,7 @@ class ScriptGenerationService:
             logger.warning("No structured report available for script generation.")
             return []
 
-        prompt = f"{script_writer_instructions}\n\n<RESEARCH_REPORT>\n{state.structured_report}\n</RESEARCH_REPORT>"
+        prompt = f"<RESEARCH_REPORT>\n{state.structured_report}\n</RESEARCH_REPORT>"
 
         response = self._agent.run(prompt)
         self._agent.clear_history()
