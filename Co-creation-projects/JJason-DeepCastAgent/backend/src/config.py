@@ -111,6 +111,16 @@ class Configuration(BaseModel):
         title="FFmpeg Path",
         description="Path to ffmpeg executable",
     )
+    tavily_api_key: Optional[str] = Field(
+        default=None,
+        title="Tavily API Key",
+        description="API key for Tavily search",
+    )
+    serpapi_api_key: Optional[str] = Field(
+        default=None,
+        title="SerpApi Key",
+        description="API key for SerpApi",
+    )
 
     @classmethod
     def from_env(cls, overrides: Optional[dict[str, Any]] = None) -> "Configuration":
@@ -145,6 +155,8 @@ class Configuration(BaseModel):
             "tts_model": os.getenv("TTS_MODEL"),
             "audio_output_dir": os.getenv("AUDIO_OUTPUT_DIR"),
             "ffmpeg_path": os.getenv("FFMPEG_PATH"),
+            "tavily_api_key": os.getenv("TAVILY_API_KEY"),
+            "serpapi_api_key": os.getenv("SERPAPI_API_KEY"),
         }
 
         # Handle NO_PROXY

@@ -359,6 +359,7 @@ source = { editable = "." }
 dependencies = [
     { name = "ddgs" },
     { name = "fastapi" },
+    { name = "google-search-results" },
     { name = "hello-agents" },
     { name = "huggingface-hub" },
     { name = "loguru" },
@@ -385,6 +386,7 @@ dev = [
 requires-dist = [
     { name = "ddgs", specifier = ">=9.6.1" },
     { name = "fastapi", specifier = ">=0.115.0" },
+    { name = "google-search-results", specifier = ">=2.4.2" },
     { name = "hello-agents", specifier = ">=0.2.8" },
     { name = "huggingface-hub", specifier = ">=1.3.3" },
     { name = "loguru", specifier = ">=0.7.3" },
@@ -454,6 +456,15 @@ sdist = { url = "https://files.pythonhosted.org/packages/d5/7d/5df2650c57d47c572
 wheels = [
     { url = "https://files.pythonhosted.org/packages/01/c9/97cc5aae1648dcb851958a3ddf73ccd7dbe5650d95203ecb4d7720b4cdbf/fsspec-2026.1.0-py3-none-any.whl", hash = "sha256:cb76aa913c2285a3b49bdd5fc55b1d7c708d7208126b60f2eb8194fe1b4cbdcc", size = 201838, upload-time = "2026-01-09T15:21:34.041Z" },
 ]
+
+[[package]]
+name = "google-search-results"
+version = "2.4.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/77/30/b3a6f6a2e00f8153549c2fa345c58ae1ce8e5f3153c2fe0484d444c3abcb/google_search_results-2.4.2.tar.gz", hash = "sha256:603a30ecae2af8e600b22635757a6df275dad4b934f975e67878ccd640b78245", size = 18818, upload-time = "2023-03-10T11:13:09.953Z" }
 
 [[package]]
 name = "h11"

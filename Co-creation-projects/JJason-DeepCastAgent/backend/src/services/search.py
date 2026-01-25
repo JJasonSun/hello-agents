@@ -17,7 +17,19 @@ from utils import (
 logger = logging.getLogger(__name__)
 
 MAX_TOKENS_PER_SOURCE = 2000
-_GLOBAL_SEARCH_TOOL = SearchTool(backend="hybrid")
+_GLOBAL_SEARCH_TOOL = None
+
+
+def get_global_search_tool(config: Configuration) -> SearchTool:
+    """Lazy initialization of the global search tool with API keys."""
+    global _GLOBAL_SEARCH_TOOL
+    if _GLOBAL_SEARCH_TOOL is None:
+        _GLOBAL_SEARCH_TOOL = SearchTool(
+            backend="hybrid",
+            tavily_key=config.tavily_api_key,
+            serpapi_key=config.serpapi_api_key,
+        )
+    return _GLOBAL_SEARCH_TOOL
 
 
 def dispatch_search(
@@ -28,9 +40,10 @@ def dispatch_search(
     """Execute configured search backend and normalise response payload."""
 
     search_api = get_config_value(config.search_api)
+    search_tool = get_global_search_tool(config)
 
     try:
-        raw_response = _GLOBAL_SEARCH_TOOL.run(
+        raw_response = search_tool.run(
             {
                 "input": query,
                 "backend": search_api,

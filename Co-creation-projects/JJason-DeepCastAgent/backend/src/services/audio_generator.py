@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from config import Configuration
+from pydub import AudioSegment
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,10 @@ class AudioGenerationService:
         Returns:
             List of paths to generated audio files
         """
+        # 检查FFmpeg路径是否配置
+        if not self._config.ffmpeg_path:
+            logger.error("FFmpeg path not configured. Audio generation will fail.")
+            return []
         if not self._config.tts_api_key:
             logger.warning("TTS API key not configured. Skipping audio generation.")
             return []
