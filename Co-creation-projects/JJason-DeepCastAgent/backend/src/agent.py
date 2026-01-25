@@ -24,6 +24,8 @@ from models import SummaryState, SummaryStateOutput, TodoItem
 from services.planner import PlanningService
 from services.reporter import ReportingService
 from services.script_generator import ScriptGenerationService
+from services.audio_generator import AudioGenerationService
+from services.audio_synthesizer import PodcastSynthesisService
 from services.search import dispatch_search, prepare_research_context
 from services.summarizer import SummarizationService
 from services.tool_events import ToolCallTracker
@@ -73,8 +75,10 @@ class DeepResearchAgent:
         self.planner = PlanningService(self.todo_agent, self.config)
         self.summarizer = SummarizationService(self._summarizer_factory, self.config)
         self.reporting = ReportingService(self.report_agent, self.config)
-        self._last_search_notices: list[str] = []
         self.script_generator = ScriptGenerationService(self.llm, self.config)
+        self.audio_generator = AudioGenerationService(self.config)
+        self.podcast_synthesizer = PodcastSynthesisService(self.config)
+        self._last_search_notices: list[str] = []
 
     # ------------------------------------------------------------------
     # Public API
@@ -144,10 +148,22 @@ class DeepResearchAgent:
         state.running_summary = report
         self._persist_final_report(state, report)
 
+        script = self.script_generator.generate_script(state)
+        self._drain_tool_events(state)
+        state.podcast_script = script
+
+        # Generate audio for the script
+        task_id = f"task_{state.report_note_id}" if state.report_note_id else "task_default"
+        audio_files = self.audio_generator.generate_audio(script, task_id)
+
+        # Synthesize podcast
+        podcast_file = self.podcast_synthesizer.synthesize_podcast(audio_files, task_id)
+        
         return SummaryStateOutput(
             running_summary=report,
             report_markdown=report,
             todo_items=state.todo_items,
+            podcast_script=script,
         )
 
     def run_stream(self, topic: str) -> Iterator[dict[str, Any]]:
@@ -294,6 +310,22 @@ class DeepResearchAgent:
             "type": "podcast_script",
             "script": script,
         }
+
+        yield {"type": "status", "message": "正在生成语音文件..."}
+        task_id = f"task_{state.report_note_id}" if state.report_note_id else "task_default"
+        audio_files = self.audio_generator.generate_audio(script, task_id)
+        yield {
+            "type": "audio_generated",
+            "files": audio_files,
+        }
+
+        yield {"type": "status", "message": "正在合成完整播客..."}
+        podcast_file = self.podcast_synthesizer.synthesize_podcast(audio_files, task_id)
+        if podcast_file:
+             yield {
+                "type": "podcast_ready",
+                "file": podcast_file,
+            }
 
         yield {"type": "done"}
 

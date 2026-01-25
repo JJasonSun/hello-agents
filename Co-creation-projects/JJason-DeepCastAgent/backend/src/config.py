@@ -86,6 +86,31 @@ class Configuration(BaseModel):
         title="LLM Model ID",
         description="Optional model identifier for custom OpenAI-compatible services",
     )
+    tts_api_key: Optional[str] = Field(
+        default=None,
+        title="TTS API Key",
+        description="API key for TTS service",
+    )
+    tts_base_url: str = Field(
+        default="https://chat.ecnu.edu.cn/open/api/v1/audio/speech",
+        title="TTS Base URL",
+        description="Base URL for TTS API",
+    )
+    tts_model: str = Field(
+        default="ecnu-tts",
+        title="TTS Model",
+        description="Model identifier for TTS service",
+    )
+    audio_output_dir: str = Field(
+        default="./output/audio",
+        title="Audio Output Directory",
+        description="Directory to save generated audio files",
+    )
+    ffmpeg_path: Optional[str] = Field(
+        default=None,
+        title="FFmpeg Path",
+        description="Path to ffmpeg executable",
+    )
 
     @classmethod
     def from_env(cls, overrides: Optional[dict[str, Any]] = None) -> "Configuration":
@@ -115,7 +140,19 @@ class Configuration(BaseModel):
             "search_api": os.getenv("SEARCH_API"),
             "enable_notes": os.getenv("ENABLE_NOTES"),
             "notes_workspace": os.getenv("NOTES_WORKSPACE"),
+            "tts_api_key": os.getenv("TTS_API_KEY"),
+            "tts_base_url": os.getenv("TTS_BASE_URL"),
+            "tts_model": os.getenv("TTS_MODEL"),
+            "audio_output_dir": os.getenv("AUDIO_OUTPUT_DIR"),
+            "ffmpeg_path": os.getenv("FFMPEG_PATH"),
         }
+
+        # Handle NO_PROXY
+        no_proxy = os.getenv("NO_PROXY")
+        if no_proxy:
+            os.environ["NO_PROXY"] = no_proxy
+            # Also set lowercase for compatibility
+            os.environ["no_proxy"] = no_proxy
 
         for key, value in env_aliases.items():
             if value is not None:
