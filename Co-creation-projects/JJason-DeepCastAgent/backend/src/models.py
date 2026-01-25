@@ -36,6 +36,7 @@ class SummaryState:
     structured_report: Optional[str] = field(default=None)
     report_note_id: Optional[str] = field(default=None)
     report_note_path: Optional[str] = field(default=None)
+    podcast_script: Optional[list] = field(default=None)
 
 
 @dataclass(kw_only=True)
@@ -48,4 +49,5 @@ class SummaryStateOutput:
     running_summary: str = field(default=None)  # Backward-compatible文本
     report_markdown: Optional[str] = field(default=None)
     todo_items: List[TodoItem] = field(default_factory=list)
+    podcast_script: Optional[list] = field(default=None)
 

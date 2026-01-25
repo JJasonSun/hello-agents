@@ -42,6 +42,10 @@ class ResearchRequest(BaseModel):
         description="Override the default search backend configured via env",
     )
 
+class PodcastScript(BaseModel):
+    """Model for podcast script content."""
+    script: str = Field(..., description="Generated podcast script content")
+
 
 class ResearchResponse(BaseModel):
     """HTTP response containing the generated report and structured tasks."""
@@ -52,6 +56,10 @@ class ResearchResponse(BaseModel):
     todo_items: list[dict[str, Any]] = Field(
         default_factory=list,
         description="Structured TODO items with summaries and sources",
+    )
+    podcast_script: Optional[PodcastScript] = Field(
+        default=None,
+        description="Generated podcast script content",
     )
 
 
@@ -141,9 +149,13 @@ def create_app() -> FastAPI:
             for item in result.todo_items
         ]
 
+        # 添加podcast_script字段到返回响应中
+        podcast_script = result.podcast_script or PodcastScript(script="")
+
         return ResearchResponse(
             report_markdown=(result.report_markdown or result.running_summary or ""),
             todo_items=todo_payload,
+            podcast_script=podcast_script,
         )
 
     @app.post("/research/stream")

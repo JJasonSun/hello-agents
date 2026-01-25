@@ -16,12 +16,14 @@ from hello_agents.tools.builtin.note_tool import NoteTool
 from config import Configuration
 from prompts import (
     report_writer_instructions,
+    script_writer_instructions,
     task_summarizer_instructions,
     todo_planner_system_prompt,
 )
 from models import SummaryState, SummaryStateOutput, TodoItem
 from services.planner import PlanningService
 from services.reporter import ReportingService
+from services.script_generator import ScriptGenerationService
 from services.search import dispatch_search, prepare_research_context
 from services.summarizer import SummarizationService
 from services.tool_events import ToolCallTracker
@@ -72,6 +74,7 @@ class DeepResearchAgent:
         self.summarizer = SummarizationService(self._summarizer_factory, self.config)
         self.reporting = ReportingService(self.report_agent, self.config)
         self._last_search_notices: list[str] = []
+        self.script_generator = ScriptGenerationService(self.llm, self.config)
 
     # ------------------------------------------------------------------
     # Public API
@@ -281,6 +284,17 @@ class DeepResearchAgent:
             "note_id": state.report_note_id,
             "note_path": state.report_note_path,
         }
+
+        yield {"type": "status", "message": "正在生成播客脚本..."}
+        script = self.script_generator.generate_script(state)
+        for event in self._drain_tool_events(state):
+            yield event
+        state.podcast_script = PodcastScript(script=script)
+        yield {
+            "type": "podcast_script",
+            "script": script,
+        }
+
         yield {"type": "done"}
 
     # ------------------------------------------------------------------
