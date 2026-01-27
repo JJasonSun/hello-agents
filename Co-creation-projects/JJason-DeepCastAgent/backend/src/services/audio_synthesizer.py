@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import List
 
 from pydub import AudioSegment
 
@@ -17,6 +16,12 @@ class PodcastSynthesisService:
     """将多个音频片段组合成最终的播客文件。"""
 
     def __init__(self, config: Configuration) -> None:
+        """
+        初始化音频合成服务。
+
+        Args:
+            config: 包含 ffmpeg 路径和输出路径的配置对象。
+        """
         self._config = config
         self._output_dir = Path(config.audio_output_dir)
         
@@ -28,7 +33,7 @@ class PodcastSynthesisService:
         # 确保 pydub/ffmpeg 可用 - 假设 ffmpeg 已安装在系统中
         # 如果没有，pydub 可能会发出警告或失败，但我们会捕获异常。
 
-    def synthesize_podcast(self, audio_files: List[str], task_id: str = "default") -> str | None:
+    def synthesize_podcast(self, audio_files: list[str], task_id: str = "default") -> str | None:
         """
         将音频文件组合成单个播客 MP3。
 

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
 class SearchAPI(Enum):
+    """可用的搜索 API 提供商。"""
     HYBRID = "hybrid"
     TAVILY = "tavily"
     SERPAPI = "serpapi"
@@ -78,7 +79,7 @@ class Configuration(BaseModel):
         description="Model ID for complex reasoning tasks (e.g. Planning, Reporting)",
     )
     fast_llm_model: Optional[str] = Field(
-        default="ecnu-plus",
+        default="ecnu-max",
         title="Fast LLM Model",
         description="Model ID for simple/fast tasks (e.g. Summarization)",
     )

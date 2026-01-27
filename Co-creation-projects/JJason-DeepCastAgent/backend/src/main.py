@@ -2,23 +2,24 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
-from typing import Any, Dict, Iterator, Optional
+from typing import Any
 
 # Ensure src directory is in sys.path for module imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from config import Configuration, SearchAPI
 from agent import DeepResearchAgent
+from config import Configuration, SearchAPI
 
 # 添加控制台日志处理程序
 logger.add(
@@ -62,13 +63,13 @@ class ResearchResponse(BaseModel):
         default_factory=list,
         description="带有摘要和来源的结构化待办事项",
     )
-    podcast_script: Optional[PodcastScript] = Field(
+    podcast_script: PodcastScript | None = Field(
         default=None,
         description="生成的播客脚本内容",
     )
 
 
-def _mask_secret(value: Optional[str], visible: int = 4) -> str:
+def _mask_secret(value: str | None, visible: int = 4) -> str:
     """在保持前导和尾随字符的同时，掩盖敏感令牌。"""
     if not value:
         return "unset"
@@ -80,7 +81,7 @@ def _mask_secret(value: Optional[str], visible: int = 4) -> str:
 
 
 def _build_config(payload: ResearchRequest) -> Configuration:
-    overrides: Dict[str, Any] = {}
+    overrides: dict[str, Any] = {}
 
     if payload.search_api is not None:
         overrides["search_api"] = payload.search_api
@@ -89,6 +90,7 @@ def _build_config(payload: ResearchRequest) -> Configuration:
 
 
 def create_app() -> FastAPI:
+    """创建并配置 FastAPI 应用实例。"""
     app = FastAPI(title="DeepCast - 自动播客生成智能体")
 
     app.add_middleware(
@@ -113,19 +115,12 @@ def create_app() -> FastAPI:
         """记录启动时的关键配置参数。"""
         config = Configuration.from_env()
 
-        if config.llm_provider == "ollama":
-            base_url = config.sanitized_ollama_url()
-        elif config.llm_provider == "lmstudio":
-            base_url = config.lmstudio_base_url
-        else:
-            base_url = config.llm_base_url or "unset"
-
         logger.info(
             "DeepResearch configuration loaded: provider=%s model=%s base_url=%s search_api=%s "
             "max_loops=%s fetch_full_page=%s tool_calling=%s strip_thinking=%s api_key=%s",
             config.llm_provider,
             config.resolved_model() or "unset",
-            base_url,
+            config.llm_base_url or "unset",
             (config.search_api.value if isinstance(config.search_api, SearchAPI) else config.search_api),
             config.max_web_research_loops,
             config.fetch_full_page,
@@ -135,7 +130,7 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/healthz")
-    def health_check() -> Dict[str, str]:
+    def health_check() -> dict[str, str]:
         return {"status": "ok"}
 
     @app.post("/research", response_model=ResearchResponse)
@@ -169,21 +164,29 @@ def create_app() -> FastAPI:
             for item in result.todo_items
         ]
 
-        # 添加podcast_script字段到返回响应中
-        podcast_script = result.podcast_script or PodcastScript(script="")
+        # 确保 podcast_script 类型正确，Pydantic 模型需要 PodcastScript 实例
+        script_content = ""
+        if result.podcast_script:
+            if isinstance(result.podcast_script, (list, dict)):
+                script_content = json.dumps(result.podcast_script, ensure_ascii=False)
+            else:
+                script_content = str(result.podcast_script)
+        
+        podcast_resp = PodcastScript(script=script_content)
 
         return ResearchResponse(
             report_markdown=(result.report_markdown or result.running_summary or ""),
             todo_items=todo_payload,
-            podcast_script=podcast_script,
+            podcast_script=podcast_resp,
         )
 
     @app.post("/research/stream")
-    def stream_research(payload: ResearchRequest) -> StreamingResponse:
+    async def stream_research(payload: ResearchRequest, request: Request) -> StreamingResponse:
         """
         触发流式研究任务。
         
         通过 Server-Sent Events (SSE) 实时返回研究进度、日志和部分结果。
+        支持客户端断开连接时自动取消后端任务。
         """
         try:
             config = _build_config(payload)
@@ -191,10 +194,41 @@ def create_app() -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        def event_iterator() -> Iterator[str]:
+        async def event_iterator():
             try:
-                for event in agent.run_stream(payload.topic):
-                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                # 在线程池中运行同步生成器
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    # 将生成器转换为可在线程中运行的迭代
+                    gen = agent.run_stream(payload.topic)
+                    
+                    while True:
+                        # 检查客户端是否断开连接
+                        if await request.is_disconnected():
+                            logger.info("Client disconnected, cancelling research task")
+                            agent.cancel()
+                            break
+                        
+                        # 在线程池中获取下一个事件
+                        loop = asyncio.get_event_loop()
+                        try:
+                            event = await asyncio.wait_for(
+                                loop.run_in_executor(executor, lambda: next(gen, None)),
+                                timeout=1.0
+                            )
+                        except asyncio.TimeoutError:
+                            # 超时时继续检查连接状态
+                            continue
+                        
+                        if event is None:
+                            break
+                            
+                        yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                        
+                        # 如果是完成或取消事件，退出循环
+                        if event.get("type") in ("done", "cancelled", "error"):
+                            break
+                            
             except Exception as exc:  # pragma: no cover - defensive guardrail
                 logger.exception("Streaming research failed")
                 error_payload = {"type": "error", "detail": str(exc)}

@@ -47,12 +47,16 @@
       <!-- 2. Production View: 制作进度监控 -->
       <section v-else-if="currentView === 'producing'" class="view-production" key="production">
         <div class="production-content">
+          <!-- 顶部：标题和控制 -->
           <header class="production-header">
-            <h2>正在制作您的播客</h2>
-            <p class="production-topic">「{{ form.topic }}」</p>
+            <div class="header-left">
+              <h2>正在制作您的播客</h2>
+              <p class="production-topic">「{{ form.topic }}」</p>
+            </div>
             <button class="cancel-btn" @click="cancelProduction">取消</button>
           </header>
 
+          <!-- 阶段进度指示器 -->
           <div class="stage-monitor">
             <div class="stage-step" :class="{ active: productionStage === 'research', completed: isStageCompleted('research') }">
               <div class="step-icon">🔍</div>
@@ -101,18 +105,59 @@
               </div>
             </div>
           </div>
+
+          <!-- 报告预览区（在日志下方） -->
+          <div v-if="reportReady" class="report-section">
+            <div class="section-header">
+              <h3>📄 深度研究报告</h3>
+              <button class="action-btn" @click="downloadReport">
+                ⬇️ 下载报告
+              </button>
+            </div>
+            <div class="report-content-box">
+              <div class="markdown-report" v-html="md.render(reportMarkdown)"></div>
+            </div>
+          </div>
+
+          <!-- 播客完成区 -->
+          <div v-if="podcastReady" class="podcast-section">
+            <div class="podcast-ready-card">
+              <div class="ready-icon">🎉</div>
+              <h3>播客制作完成！</h3>
+              <p>您的播客音频已生成完毕</p>
+              
+              <!-- 简单音频播放器 -->
+              <div class="simple-player">
+                <audio 
+                  ref="audioPlayer" 
+                  :src="audioUrl" 
+                  controls
+                  @play="isPlaying = true"
+                  @pause="isPlaying = false"
+                ></audio>
+              </div>
+              
+              <div class="podcast-actions">
+                <a :href="audioUrl" download class="download-podcast-btn">
+                  ⬇️ 下载 MP3
+                </a>
+                <button class="new-podcast-btn" @click="resetApp">
+                  制作新播客
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      <!-- 3. Player View: 播放器与脚本 -->
+      <!-- 3. Player View: 独立播放器页面 -->
       <section v-else-if="currentView === 'player'" class="view-player" key="player">
-        <div class="player-layout">
-          <!-- Left: Player Control -->
-          <div class="player-sidebar">
-            <button class="back-home-btn" @click="resetApp">
-              ← 制作新播客
-            </button>
-            
+        <div class="player-container">
+          <button class="back-home-btn" @click="resetApp">
+            ← 制作新播客
+          </button>
+          
+          <div class="player-card">
             <div class="album-art">
               <div class="vinyl-record" :class="{ spinning: isPlaying }">
                 <div class="vinyl-label">DC</div>
@@ -124,59 +169,29 @@
               <p>DeepCast 原创播客</p>
             </div>
 
-            <div class="audio-controls">
+            <!-- 简单原生播放器 -->
+            <div class="simple-player-large">
               <audio 
                 ref="audioPlayer" 
                 :src="audioUrl" 
-                @timeupdate="onTimeUpdate"
-                @ended="isPlaying = false"
+                controls
                 @play="isPlaying = true"
                 @pause="isPlaying = false"
               ></audio>
-              
-              <div class="control-buttons">
-                <button class="play-btn" @click="togglePlay">
-                  {{ isPlaying ? '⏸' : '▶' }}
-                </button>
-                <a :href="audioUrl" download class="download-btn" title="下载 MP3">
-                  ⬇
-                </a>
-              </div>
-              
-              <div class="progress-bar-wrapper" @click="seekAudio">
-                <div class="progress-bar-bg">
-                  <div class="progress-bar-fill" :style="{ width: progressPercent + '%' }"></div>
-                </div>
-                <div class="time-display">{{ formatTime(currentTime) }} / {{ formatTime(duration) }}</div>
-              </div>
             </div>
 
-            <div class="report-toggle">
-              <button @click="showReport = !showReport">
-                {{ showReport ? '隐藏深度研究报告' : '查看深度研究报告' }}
-              </button>
-            </div>
+            <a :href="audioUrl" download class="download-btn-large">
+              ⬇️ 下载 MP3
+            </a>
           </div>
 
-          <!-- Right: Script / Report -->
-          <div class="content-main">
-            <div v-if="!showReport" class="script-chat">
-              <div 
-                v-for="(line, idx) in podcastScript" 
-                :key="idx" 
-                class="chat-bubble"
-                :class="line.role.toLowerCase()"
-              >
-                <div class="avatar">{{ line.role[0] }}</div>
-                <div class="bubble-content">
-                  <div class="speaker-name">{{ line.role }}</div>
-                  <p>{{ line.content }}</p>
-                </div>
-              </div>
-            </div>
-
-            <div v-else class="markdown-report">
-              <div class="report-content" v-html="md.render(reportMarkdown)"></div>
+          <!-- 报告查看区 -->
+          <div class="report-toggle-section">
+            <button class="toggle-btn" @click="showReport = !showReport">
+              {{ showReport ? '🔼 收起研究报告' : '🔽 查看研究报告' }}
+            </button>
+            <div v-if="showReport" class="report-panel">
+              <div class="markdown-report" v-html="md.render(reportMarkdown)"></div>
             </div>
           </div>
         </div>
@@ -220,7 +235,9 @@ const isPlaying = ref(false);
 const currentTime = ref(0);
 const duration = ref(0);
 const progressPercent = computed(() => (duration.value ? (currentTime.value / duration.value) * 100 : 0));
-const showReport = ref(false);
+const showReport = ref(true); // 默认显示报告
+const reportReady = ref(false); // 报告是否已生成
+const podcastReady = ref(false); // 播客是否已生成
 
 // Research Progress State
 const totalTasks = ref(0);
@@ -343,6 +360,9 @@ async function startProduction() {
   audioProgress.total = 0;
   audioProgress.role = "";
   currentStatusMessage.value = "正在初始化...";
+  reportReady.value = false;
+  podcastReady.value = false;
+  showReport.value = true;
 
   abortController = new AbortController();
   
@@ -531,10 +551,11 @@ function handleStreamEvent(event: ResearchStreamEvent) {
       }
   }
 
-  // 5. Report Ready
+  // 5. Report Ready - 显示报告预览
   if (event.type === "final_report") {
     reportMarkdown.value = String(event.report);
-    currentStatusMessage.value = "深度研究报告已完成";
+    reportReady.value = true;
+    currentStatusMessage.value = "深度研究报告已完成，继续生成播客...";
     const reportLen = String(event.report).length;
     addLog(`📄 [REPORT] status=completed length=${reportLen} chars`);
   }
@@ -589,20 +610,17 @@ function handleStreamEvent(event: ResearchStreamEvent) {
     }
   }
 
-  // 9. Podcast Ready (Final)
+  // 9. Podcast Ready (Final) - 设置播客就绪状态
   if (event.type === "podcast_ready") {
     const payload = event as any;
     const filename = String(payload.file).split(/[\\/]/).pop();
     if (filename) {
       const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
       audioUrl.value = `${baseUrl}/output/${filename}`;
+      podcastReady.value = true;
       currentStatusMessage.value = "🎉 播客制作完成！";
       addLog(`🎉 [PODCAST] status=ready file=${filename}`);
       productionStage.value = "done";
-      
-      setTimeout(() => {
-        currentView.value = "player";
-      }, 1500);
     }
   }
 
@@ -636,6 +654,27 @@ function resetApp() {
   isPlaying.value = false;
   currentStatusMessage.value = "";
   stopWaitingAnimation();
+  reportReady.value = false;
+  podcastReady.value = false;
+}
+
+// 下载报告为 Markdown 文件
+function downloadReport() {
+  if (!reportMarkdown.value) return;
+  const blob = new Blob([reportMarkdown.value], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${form.topic.slice(0, 30) || 'report'}_研究报告.md`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// 切换到播放器视图
+function playPodcast() {
+  currentView.value = "player";
 }
 
 // Audio Controls
@@ -850,11 +889,230 @@ select {
   cursor: not-allowed;
 }
 
-/* --- Production View --- */
+/* --- Production View (上下布局) --- */
 .view-production {
   overflow-y: auto;
   width: 100%;
   display: block;
+}
+
+.production-content {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.production-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.header-left h2 {
+  font-size: 1.5rem;
+  margin: 0;
+}
+
+.production-topic {
+  color: #94a3b8;
+  font-size: 1rem;
+  margin-top: 0.25rem;
+  font-style: italic;
+}
+
+.cancel-btn {
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  color: #fca5a5;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.cancel-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.8);
+}
+
+/* 报告区块 */
+.report-section {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background: rgba(30, 41, 59, 0.8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.section-header h3 {
+  margin: 0;
+  color: #f1f5f9;
+  font-size: 1.1rem;
+}
+
+.action-btn {
+  padding: 0.5rem 1rem;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.action-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+}
+
+.report-content-box {
+  padding: 1.5rem;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.report-content-box .markdown-report {
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+/* 播客完成区块 */
+.podcast-section {
+  margin-top: 1rem;
+}
+
+.podcast-ready-card {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(59, 130, 246, 0.2));
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 16px;
+  padding: 2rem;
+  text-align: center;
+}
+
+.ready-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.podcast-ready-card h3 {
+  color: #10b981;
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.podcast-ready-card p {
+  color: #94a3b8;
+  margin-bottom: 1rem;
+}
+
+/* 简单音频播放器 */
+.simple-player {
+  margin: 1.5rem auto;
+  max-width: 400px;
+}
+
+.simple-player audio {
+  width: 100%;
+  height: 50px;
+  border-radius: 8px;
+}
+
+.podcast-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+.download-podcast-btn {
+  padding: 0.75rem 2rem;
+  background: linear-gradient(135deg, #10b981, #059669);
+  border: none;
+  border-radius: 10px;
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.download-podcast-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+}
+
+.new-podcast-btn {
+  padding: 0.75rem 2rem;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  color: #94a3b8;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.new-podcast-btn:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #f1f5f9;
+}
+
+/* 等待报告 */
+.waiting-report {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  text-align: center;
+}
+
+.waiting-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  animation: bounce 2s infinite;
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.waiting-report p {
+  color: #94a3b8;
+  font-size: 1rem;
+}
+
+/* 响应式布局 */
+@media (max-width: 1024px) {
+  .production-layout {
+    flex-direction: column;
+  }
+  
+  .production-sidebar {
+    flex: none;
+  }
+  
+  .report-preview-section {
+    max-height: 400px;
+  }
 }
 
 .production-content {
@@ -1274,46 +1532,43 @@ select {
   line-height: 1.5;
 }
 
-/* --- Player View --- */
+/* --- Player View (简化版) --- */
 .view-player {
-  padding: 0;
-  overflow: hidden; /* Player view handles internal scrolling */
-}
-
-.player-layout {
-  display: flex;
-  height: 100%;
-  width: 100%;
-}
-
-.player-sidebar {
-  width: 400px;
-  background: #0f172a;
-  border-right: 1px solid #1e293b;
   padding: 2rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  z-index: 2;
+  overflow-y: auto;
+}
+
+.player-container {
+  max-width: 800px;
+  margin: 0 auto;
 }
 
 .back-home-btn {
-  align-self: flex-start;
   background: none;
   border: none;
   color: #64748b;
   cursor: pointer;
   margin-bottom: 2rem;
+  font-size: 1rem;
 }
 
 .back-home-btn:hover {
   color: #fff;
 }
 
-.album-art {
-  width: 260px;
-  height: 260px;
+.player-card {
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 2rem;
+  text-align: center;
   margin-bottom: 2rem;
+}
+
+.album-art {
+  width: 200px;
+  height: 200px;
+  margin: 0 auto 1.5rem;
   position: relative;
 }
 
@@ -1330,10 +1585,10 @@ select {
 }
 
 .vinyl-record.spinning {
-  animation: spin 5s linear infinite;
+  animation: vinylSpin 5s linear infinite;
 }
 
-@keyframes spin {
+@keyframes vinylSpin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
@@ -1353,7 +1608,7 @@ select {
 
 .track-info {
   text-align: center;
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
 }
 
 .track-info h3 {
@@ -1364,161 +1619,69 @@ select {
   color: #fff;
 }
 
-.audio-controls {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.control-buttons {
-  display: flex;
-  justify-content: center;
-  gap: 1.5rem;
-  align-items: center;
-}
-
-.play-btn {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: #fff;
-  color: #0f172a;
-  border: none;
-  font-size: 1.5rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.1s;
-}
-
-.play-btn:active {
-  transform: scale(0.95);
-}
-
-.download-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.1);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-  font-size: 1.2rem;
-}
-
-.progress-bar-wrapper {
-  cursor: pointer;
-  padding: 10px 0;
-}
-
-.progress-bar-bg {
-  width: 100%;
-  height: 4px;
-  background: #334155;
-  border-radius: 2px;
-  position: relative;
-}
-
-.progress-bar-fill {
-  height: 100%;
-  background: #60a5fa;
-  border-radius: 2px;
-}
-
-.time-display {
-  font-size: 0.75rem;
-  color: #64748b;
-  margin-top: 0.5rem;
-  text-align: right;
-}
-
-.report-toggle {
-  margin-top: auto;
-  width: 100%;
-  text-align: center;
-}
-
-.report-toggle button {
-  background: none;
-  border: 1px solid #334155;
+.track-info p {
   color: #94a3b8;
-  padding: 0.5rem 1rem;
-  border-radius: 20px;
-  font-size: 0.8rem;
-  cursor: pointer;
+  font-size: 0.9rem;
 }
 
-.content-main {
-  flex: 1;
-  background: #1e293b;
-  padding: 2rem;
-  overflow-y: auto;
+/* 简化的大播放器 */
+.simple-player-large {
+  margin: 1.5rem 0;
 }
 
-/* Chat UI */
-.script-chat {
-  max-width: 800px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
+.simple-player-large audio {
+  width: 100%;
+  height: 50px;
+  border-radius: 8px;
 }
 
-.chat-bubble {
-  display: flex;
-  gap: 1rem;
-}
-
-.chat-bubble.host {
-  flex-direction: row;
-}
-
-.chat-bubble.guest {
-  flex-direction: row-reverse;
-}
-
-.avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: #3b82f6;
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  flex-shrink: 0;
-}
-
-.chat-bubble.guest .avatar {
-  background: #8b5cf6;
-}
-
-.bubble-content {
-  background: #334155;
-  padding: 1rem;
-  border-radius: 12px;
-  border-top-left-radius: 2px;
-  max-width: 80%;
-  line-height: 1.6;
-}
-
-.chat-bubble.guest .bubble-content {
-  background: #475569;
-  border-radius: 12px;
-  border-top-right-radius: 2px;
-}
-
-.speaker-name {
-  font-size: 0.75rem;
-  color: #94a3b8;
-  margin-bottom: 0.25rem;
-  text-transform: uppercase;
+.download-btn-large {
+  display: inline-block;
+  padding: 0.75rem 2rem;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  border-radius: 10px;
+  color: white;
+  font-size: 1rem;
   font-weight: 600;
+  text-decoration: none;
+  transition: all 0.3s ease;
+}
+
+.download-btn-large:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+}
+
+/* 报告切换区 */
+.report-toggle-section {
+  margin-top: 2rem;
+}
+
+.toggle-btn {
+  width: 100%;
+  padding: 1rem;
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #94a3b8;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.toggle-btn:hover {
+  background: rgba(30, 41, 59, 0.8);
+  color: #f1f5f9;
+}
+
+.report-panel {
+  margin-top: 1rem;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 1.5rem;
+  max-height: 500px;
+  overflow-y: auto;
 }
 
 .markdown-report {
@@ -1528,101 +1691,58 @@ select {
   line-height: 1.7;
 }
 
-.task-summary {
-  font-size: 0.85rem;
-  color: #cbd5e1;
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px dashed rgba(255, 255, 255, 0.1);
-  line-height: 1.6;
-}
-
-.task-summary :deep(h1),
-.task-summary :deep(h2),
-.task-summary :deep(h3),
-.task-summary :deep(h4) {
-  font-size: 0.95rem;
-  font-weight: 700;
-  margin-top: 0.8rem;
-  margin-bottom: 0.4rem;
-  color: #e2e8f0;
-}
-
-.task-summary :deep(p) {
-  margin-bottom: 0.6rem;
-}
-
-.task-summary :deep(ul),
-.task-summary :deep(ol) {
-  padding-left: 1.2rem;
-  margin-bottom: 0.6rem;
-}
-
-.task-summary :deep(li) {
-  margin-bottom: 0.3rem;
-}
-
-.task-summary :deep(strong) {
-  color: #60a5fa;
-  font-weight: 600;
-}
-
-.task-summary :deep(code) {
-  background: rgba(0, 0, 0, 0.3);
-  padding: 2px 4px;
-  border-radius: 3px;
-  font-family: 'Fira Code', monospace;
-  font-size: 0.8em;
-  color: #f472b6;
-}
-
-.report-content {
-  line-height: 1.8;
-}
-
-.report-content :deep(h1) {
-  font-size: 1.8rem;
-  margin-bottom: 1.5rem;
+.markdown-report :deep(h1) {
+  font-size: 1.6rem;
+  margin-bottom: 1rem;
   color: #60a5fa;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding-bottom: 0.5rem;
 }
 
-.report-content :deep(h2) {
-  font-size: 1.4rem;
-  margin-top: 2rem;
-  margin-bottom: 1rem;
+.markdown-report :deep(h2) {
+  font-size: 1.3rem;
+  margin-top: 1.5rem;
+  margin-bottom: 0.8rem;
   color: #c084fc;
 }
 
-.report-content :deep(h3) {
+.markdown-report :deep(h3) {
   font-size: 1.1rem;
-  margin-top: 1.5rem;
-  margin-bottom: 0.8rem;
+  margin-top: 1.2rem;
+  margin-bottom: 0.6rem;
   color: #e2e8f0;
 }
 
-.report-content :deep(p) {
-  margin-bottom: 1rem;
+.markdown-report :deep(p) {
+  margin-bottom: 0.8rem;
   color: #cbd5e1;
 }
 
-.report-content :deep(ul),
-.report-content :deep(ol) {
+.markdown-report :deep(ul),
+.markdown-report :deep(ol) {
   padding-left: 1.5rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.8rem;
 }
 
-.report-content :deep(li) {
-  margin-bottom: 0.5rem;
+.markdown-report :deep(li) {
+  margin-bottom: 0.4rem;
 }
 
-.report-content :deep(strong) {
+.markdown-report :deep(strong) {
   color: #fff;
   font-weight: 600;
 }
 
-.report-content :deep(blockquote) {
+.markdown-report :deep(code) {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.85em;
+  color: #f472b6;
+}
+
+.markdown-report :deep(blockquote) {
   border-left: 4px solid #60a5fa;
   padding-left: 1rem;
   margin: 1rem 0;
@@ -1631,6 +1751,15 @@ select {
   background: rgba(255, 255, 255, 0.05);
   padding: 0.5rem 1rem;
   border-radius: 0 4px 4px 0;
+}
+
+.markdown-report :deep(a) {
+  color: #60a5fa;
+  text-decoration: none;
+}
+
+.markdown-report :deep(a:hover) {
+  text-decoration: underline;
 }
 
 /* Transitions */

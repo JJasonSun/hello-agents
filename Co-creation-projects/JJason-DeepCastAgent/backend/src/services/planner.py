@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, List, Optional
+from typing import Any
 
 from hello_agents import ToolAwareSimpleAgent
 
-from models import SummaryState, TodoItem
 from config import Configuration
+from models import SummaryState, TodoItem
 from prompts import get_current_date, todo_planner_instructions
 from utils import strip_thinking_tokens
 
@@ -28,7 +28,7 @@ class PlanningService:
         self._agent = planner_agent
         self._config = config
 
-    def plan_todo_list(self, state: SummaryState) -> List[TodoItem]:
+    def plan_todo_list(self, state: SummaryState) -> list[TodoItem]:
         """
         要求规划器代理将主题分解为可操作的任务。
         
@@ -38,7 +38,6 @@ class PlanningService:
         Returns:
             规划出的 TodoItem 列表。
         """
-
         prompt = todo_planner_instructions.format(
             current_date=get_current_date(),
             research_topic=state.research_topic,
@@ -50,7 +49,7 @@ class PlanningService:
         logger.info("Planner raw output (truncated): %s", response[:500])
 
         tasks_payload = self._extract_tasks(response)
-        todo_items: List[TodoItem] = []
+        todo_items: list[TodoItem] = []
 
         for idx, item in enumerate(tasks_payload, start=1):
             title = str(item.get("title") or f"任务{idx}").strip()
@@ -81,7 +80,6 @@ class PlanningService:
         
         当 LLM 无法生成有效的 JSON 任务列表时调用。
         """
-
         return TodoItem(
             id=1,
             title="基础背景梳理",
@@ -92,19 +90,18 @@ class PlanningService:
     # ------------------------------------------------------------------
     # 解析助手
     # ------------------------------------------------------------------
-    def _extract_tasks(self, raw_response: str) -> List[dict[str, Any]]:
+    def _extract_tasks(self, raw_response: str) -> list[dict[str, Any]]:
         """
         将规划器输出解析为任务字典列表。
         
         支持纯 JSON 格式或嵌入在工具调用中的 JSON。
         """
-
         text = raw_response.strip()
         if self._config.strip_thinking_tokens:
             text = strip_thinking_tokens(text)
 
         json_payload = self._extract_json_payload(text)
-        tasks: List[dict[str, Any]] = []
+        tasks: list[dict[str, Any]] = []
 
         if isinstance(json_payload, dict):
             candidate = json_payload.get("tasks")
@@ -126,9 +123,8 @@ class PlanningService:
 
         return tasks
 
-    def _extract_json_payload(self, text: str) -> Optional[dict[str, Any] | list]:
+    def _extract_json_payload(self, text: str) -> dict[str, Any] | list | None:
         """尝试从文本中定位并解析 JSON 对象或数组。"""
-
         start = text.find("{")
         end = text.rfind("}")
         if start != -1 and end != -1 and end > start:
@@ -149,9 +145,8 @@ class PlanningService:
 
         return None
 
-    def _extract_tool_payload(self, text: str) -> Optional[dict[str, Any]]:
+    def _extract_tool_payload(self, text: str) -> dict[str, Any] | None:
         """解析输出中的第一个 TOOL_CALL 表达式。"""
-
         match = TOOL_CALL_PATTERN.search(text)
         if not match:
             return None

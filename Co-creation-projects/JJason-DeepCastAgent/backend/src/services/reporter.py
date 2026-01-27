@@ -6,30 +6,31 @@ import json
 
 from hello_agents import ToolAwareSimpleAgent
 
-from models import SummaryState
 from config import Configuration
-from utils import strip_thinking_tokens
+from models import SummaryState
 from services.text_processing import strip_tool_calls
+from utils import strip_thinking_tokens
 
 
 class ReportingService:
     """生成最终的结构化报告。"""
 
-    def __init__(self, report_agent: ToolAwareSimpleAgent, config: Configuration) -> None:
+    def __init__(  # noqa: D107
+        self, report_agent: ToolAwareSimpleAgent, config: Configuration
+    ) -> None:
         self._agent = report_agent
         self._config = config
 
     def generate_report(self, state: SummaryState) -> str:
         """
         基于完成的任务生成结构化报告。
-        
+
         Args:
             state: 包含任务结果和笔记的研究状态。
-            
+
         Returns:
             Markdown 格式的报告文本。
         """
-
         tasks_block = []
         for task in state.todo_items:
             summary_block = task.summary or "暂无可用信息"
@@ -50,16 +51,21 @@ class ReportingService:
                     f"- 任务 {task.id}《{task.title}》：note_id={task.note_id}"
                 )
 
-        notes_section = "\n".join(note_references) if note_references else "- 暂无可用任务笔记"
+        notes_section = (
+            "\n".join(note_references) if note_references else "- 暂无可用任务笔记"
+        )
 
-        read_template = json.dumps({"action": "read", "note_id": "<note_id>"}, ensure_ascii=False)
+        read_template = json.dumps(
+            {"action": "read", "note_id": "<note_id>"}, ensure_ascii=False
+        )
+        # 结论笔记模板，让 LLM 自己填充实际内容
         create_conclusion_template = json.dumps(
             {
                 "action": "create",
                 "title": f"研究报告：{state.research_topic}",
                 "note_type": "conclusion",
                 "tags": ["deep_research", "report"],
-                "content": "请在此沉淀最终报告要点",
+                "content": "<请在此填写报告核心要点>",
             },
             ensure_ascii=False,
         )
@@ -69,7 +75,9 @@ class ReportingService:
             f"任务概览：\n{''.join(tasks_block)}\n"
             f"可用任务笔记：\n{notes_section}\n"
             f"请针对每条任务笔记使用格式：[TOOL_CALL:note:{read_template}] 读取内容，整合所有信息后撰写报告。\n"
-            f"如需输出汇总结论，可追加调用：[TOOL_CALL:note:{create_conclusion_template}] 保存报告要点。"
+            f"如需输出汇总结论，可追加调用 note 工具保存报告要点，参数模板如下（需将 content 替换为实际报告要点）：\n"
+            f"  {create_conclusion_template}\n"
+            "**重要**：content 字段必须填写本次研究的实际核心发现和结论，不要使用占位文本。"
         )
 
         response = self._agent.run(prompt)
@@ -82,4 +90,3 @@ class ReportingService:
         report_text = strip_tool_calls(report_text).strip()
 
         return report_text or "报告生成失败，请检查输入。"
-

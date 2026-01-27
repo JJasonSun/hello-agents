@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import logging
-import os
-import requests
+from collections.abc import Callable
 from pathlib import Path
-from typing import List, Optional, Callable
+
+import requests
 
 from config import Configuration
-from pydub import AudioSegment
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +17,12 @@ class AudioGenerationService:
     """处理与 TTS 服务的交互以生成音频文件。"""
 
     def __init__(self, config: Configuration) -> None:
+        """
+        初始化音频生成服务。
+
+        Args:
+            config: 包含 TTS 配置和输出路径的配置对象。
+        """
         self._config = config
         self._output_dir = Path(config.audio_output_dir)
         self._ensure_output_dir()
@@ -37,17 +42,18 @@ class AudioGenerationService:
 
     def generate_audio(
         self, 
-        script: List[dict[str, str]], 
+        script: list[dict[str, str]], 
         task_id: str = "default",
-        progress_callback: Optional[Callable[[int, int, str, str], None]] = None
-    ) -> List[str]:
+        progress_callback: Callable[[int, int, str, str], bool | None] | None = None
+    ) -> list[str]:
         """
         为给定的脚本生成音频文件。
         
         Args:
             script: 对话回合列表，例如 [{"role": "Host", "content": "..."}, ...]
             task_id: 当前任务/会话的唯一标识符
-            progress_callback: 可选的进度回调函数，签名为 (current, total, role, content_preview) -> None
+            progress_callback: 可选的进度回调函数，签名为 (current, total, role, content_preview) -> Optional[bool]
+                              返回 False 表示应该停止生成，返回 True 或 None 表示继续
             
         Returns:
             生成的音频文件的路径列表
@@ -70,10 +76,13 @@ class AudioGenerationService:
             if not role or not content:
                 continue
             
-            # 调用进度回调
+            # 调用进度回调，检查是否应该停止
             if progress_callback:
                 content_preview = content[:30] + "..." if len(content) > 30 else content
-                progress_callback(index + 1, total, role, content_preview)
+                should_continue = progress_callback(index + 1, total, role, content_preview)
+                if should_continue is False:
+                    logger.info("Audio generation cancelled by callback")
+                    break
                 
             voice_id = self._get_voice_for_role(role)
             if not voice_id:

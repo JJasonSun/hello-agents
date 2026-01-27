@@ -41,21 +41,20 @@ lint.select = [
     "E",    # pycodestyle
     "F",    # pyflakes
     "I",    # isort
+    "UP",   # pyupgrade
     "D",    # pydocstyle
-    "D401", # First line should be in imperative mood
-    "T201",
-    "UP",
+    "T20",  # flake8-print
 ]
 lint.ignore = [
-    "UP006",
-    "UP007",
-    "UP035",
-    "D417",
-    "E501",
+    "D400",  # 中文 docstring 句号检测误报
+    "D415",  # 中文 docstring 句号检测误报
+    "D212",  # 多行 docstring 首行格式
+    "E501",  # 行过长
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["D", "UP"]
+"scripts/*" = ["T201"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Union
+from typing import Any
 
 CHARS_PER_TOKEN = 4
 
@@ -12,13 +12,11 @@ logger = logging.getLogger(__name__)
 
 def get_config_value(value: Any) -> str:
     """以纯字符串形式返回配置值。"""
-
     return value if isinstance(value, str) else value.value
 
 
 def strip_thinking_tokens(text: str) -> str:
     """移除模型响应中的 ``<think>`` 部分。"""
-
     while "<think>" in text and "</think>" in text:
         start = text.find("<think>")
         end = text.find("</think>") + len("</think>")
@@ -27,7 +25,7 @@ def strip_thinking_tokens(text: str) -> str:
 
 
 def deduplicate_and_format_sources(
-    search_response: Dict[str, Any] | List[Dict[str, Any]],
+    search_response: dict[str, Any] | list[dict[str, Any]],
     max_tokens_per_source: int,
     *,
     fetch_full_page: bool = False,
@@ -43,13 +41,12 @@ def deduplicate_and_format_sources(
     Returns:
         格式化后的上下文文本字符串。
     """
-
     if isinstance(search_response, dict):
         sources_list = search_response.get("results", [])
     else:
         sources_list = search_response
 
-    unique_sources: dict[str, Dict[str, Any]] = {}
+    unique_sources: dict[str, dict[str, Any]] = {}
     for source in sources_list:
         url = source.get("url")
         if not url:
@@ -57,7 +54,7 @@ def deduplicate_and_format_sources(
         if url not in unique_sources:
             unique_sources[url] = source
 
-    formatted_parts: List[str] = []
+    formatted_parts: list[str] = []
     for source in unique_sources.values():
         title = source.get("title") or source.get("url", "")
         content = source.get("content", "")
@@ -80,9 +77,8 @@ def deduplicate_and_format_sources(
     return "".join(formatted_parts).strip()
 
 
-def format_sources(search_results: Dict[str, Any] | None) -> str:
+def format_sources(search_results: dict[str, Any] | None) -> str:
     """返回总结搜索来源的项目符号列表。"""
-
     if not search_results:
         return ""
 

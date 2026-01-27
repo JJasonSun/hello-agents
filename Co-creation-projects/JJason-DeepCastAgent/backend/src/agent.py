@@ -4,33 +4,39 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from queue import Empty, Queue
-from threading import Lock, Thread
-from typing import Any, Callable, Iterator
+from threading import Event, Lock, Thread
+from typing import Any
 
 from hello_agents import HelloAgentsLLM, ToolAwareSimpleAgent
 from hello_agents.tools import ToolRegistry
 from hello_agents.tools.builtin.note_tool import NoteTool
 
 from config import Configuration
+from models import SummaryState, SummaryStateOutput, TodoItem
 from prompts import (
     report_writer_instructions,
     script_writer_instructions,
     task_summarizer_instructions,
     todo_planner_system_prompt,
 )
-from models import SummaryState, SummaryStateOutput, TodoItem
+from services.audio_generator import AudioGenerationService
+from services.audio_synthesizer import PodcastSynthesisService
 from services.planner import PlanningService
 from services.reporter import ReportingService
 from services.script_generator import ScriptGenerationService
-from services.audio_generator import AudioGenerationService
-from services.audio_synthesizer import PodcastSynthesisService
 from services.search import dispatch_search, prepare_research_context
 from services.summarizer import SummarizationService
 from services.tool_events import ToolCallTracker
 
 logger = logging.getLogger(__name__)
+
+
+class CancelledException(Exception):
+    """研究任务被用户取消时抛出的异常。"""
+    pass
 
 
 class DeepResearchAgent:
@@ -59,6 +65,7 @@ class DeepResearchAgent:
         )
         self._tool_event_sink_enabled = False
         self._state_lock = Lock()
+        self._cancel_event = Event()  # 取消信号
 
         self.todo_agent = self._create_tool_aware_agent(
             name="研究规划专家",
@@ -90,6 +97,20 @@ class DeepResearchAgent:
 
         self.podcast_synthesizer = PodcastSynthesisService(self.config)
         self._last_search_notices: list[str] = []
+
+    def cancel(self) -> None:
+        """请求取消当前正在执行的研究任务。"""
+        logger.info("Cancel requested for research agent")
+        self._cancel_event.set()
+
+    def _check_cancelled(self) -> None:
+        """检查是否收到取消请求，如果是则抛出 CancelledException。"""
+        if self._cancel_event.is_set():
+            raise CancelledException("研究任务已被用户取消")
+
+    def is_cancelled(self) -> bool:
+        """检查当前任务是否已被取消。"""
+        return self._cancel_event.is_set()
 
     # ------------------------------------------------------------------
     # 公共 API
@@ -167,7 +188,7 @@ class DeepResearchAgent:
         audio_files = self.audio_generator.generate_audio(script, task_id)
 
         # 合成播客
-        podcast_file = self.podcast_synthesizer.synthesize_podcast(audio_files, task_id)
+        self.podcast_synthesizer.synthesize_podcast(audio_files, task_id)
         
         return SummaryStateOutput(
             running_summary=report,
@@ -187,10 +208,20 @@ class DeepResearchAgent:
         3. 实时流式传输任务状态、搜索结果和部分总结。
         4. 所有任务完成后，生成并流式传输最终报告。
         5. 生成并流式传输播客脚本和音频合成进度。
+        
+        支持通过 cancel() 方法取消执行。
         """
+        # 重置取消状态
+        self._cancel_event.clear()
+        
         state = SummaryState(research_topic=topic)
         logger.debug("Starting streaming research: topic=%s", topic)
         yield {"type": "status", "message": "初始化研究流程"}
+
+        # 检查取消
+        if self.is_cancelled():
+            yield {"type": "cancelled", "message": "研究任务已取消"}
+            return
 
         state.todo_items = self.planner.plan_todo_list(state)
         for event in self._drain_tool_events(state, step=0):
@@ -245,6 +276,11 @@ class DeepResearchAgent:
 
         def worker(task: TodoItem, step: int) -> None:
             try:
+                # 检查取消状态
+                if self.is_cancelled():
+                    enqueue({"type": "__task_done__", "task_id": task.id})
+                    return
+                    
                 enqueue(
                     {
                         "type": "task_status",
@@ -260,7 +296,12 @@ class DeepResearchAgent:
                 )
 
                 for event in self._execute_task(state, task, emit_stream=True, step=step):
+                    # 在每个事件之后检查取消
+                    if self.is_cancelled():
+                        break
                     enqueue(event, task=task)
+            except CancelledException:
+                logger.info("Task %s cancelled", task.id)
             except Exception as exc:  # pragma: no cover - defensive guardrail
                 logger.exception("Task execution failed", exc_info=exc)
                 enqueue(
@@ -291,7 +332,17 @@ class DeepResearchAgent:
 
         try:
             while finished_workers < active_workers:
-                event = event_queue.get()
+                # 使用带超时的 get 以便定期检查取消状态
+                try:
+                    event = event_queue.get(timeout=0.5)
+                except Empty:
+                    # 检查是否取消
+                    if self.is_cancelled():
+                        logger.info("Research cancelled during task execution")
+                        yield {"type": "cancelled", "message": "研究任务已取消"}
+                        return
+                    continue
+                    
                 if event.get("type") == "__task_done__":
                     finished_workers += 1
                     continue
@@ -307,7 +358,12 @@ class DeepResearchAgent:
         finally:
             self._set_tool_event_sink(None)
             for thread in threads:
-                thread.join()
+                thread.join(timeout=1.0)
+
+        # 检查取消
+        if self.is_cancelled():
+            yield {"type": "cancelled", "message": "研究任务已取消"}
+            return
 
         yield {
             "type": "stage_change",
@@ -323,6 +379,11 @@ class DeepResearchAgent:
         state.running_summary = report
         yield {"type": "log", "message": f"✓ 报告撰写完成，共 {len(report)} 字符"}
 
+        # 检查取消
+        if self.is_cancelled():
+            yield {"type": "cancelled", "message": "研究任务已取消"}
+            return
+
         note_event = self._persist_final_report(state, report)
         if note_event:
             yield note_event
@@ -333,6 +394,11 @@ class DeepResearchAgent:
             "note_id": state.report_note_id,
             "note_path": state.report_note_path,
         }
+
+        # 检查取消
+        if self.is_cancelled():
+            yield {"type": "cancelled", "message": "研究任务已取消"}
+            return
 
         yield {
             "type": "stage_change",
@@ -358,6 +424,11 @@ class DeepResearchAgent:
             "turns": script_turns,
         }
 
+        # 检查取消
+        if self.is_cancelled():
+            yield {"type": "cancelled", "message": "研究任务已取消"}
+            return
+
         yield {
             "type": "stage_change",
             "stage": "audio",
@@ -369,9 +440,13 @@ class DeepResearchAgent:
         audio_event_queue: Queue[dict[str, Any]] = Queue()
         audio_result: list = []
         audio_error: list = []
+        cancel_audio = Event()  # 用于取消音频生成的信号
         
         def audio_progress_callback(current, total, role, preview):
             """将进度事件放入队列以实现实时更新"""
+            # 检查是否应该取消
+            if self.is_cancelled() or cancel_audio.is_set():
+                return False  # 返回 False 表示应该停止
             audio_event_queue.put({
                 "type": "audio_progress",
                 "current": current,
@@ -380,6 +455,7 @@ class DeepResearchAgent:
                 "preview": preview,
                 "message": f"[TTS {current}/{total}] 正在为 {role} 生成语音: {preview}",
             })
+            return True  # 返回 True 表示继续
         
         def run_audio_generation():
             """在单独线程中运行音频生成"""
@@ -387,7 +463,8 @@ class DeepResearchAgent:
                 files = self.audio_generator.generate_audio(script, task_id, audio_progress_callback)
                 audio_result.append(files)
             except Exception as e:
-                audio_error.append(str(e))
+                if not self.is_cancelled():
+                    audio_error.append(str(e))
             finally:
                 audio_event_queue.put({"type": "_audio_done"})
         
@@ -405,6 +482,13 @@ class DeepResearchAgent:
         
         # 实时流式传输进度事件
         while True:
+            # 检查取消
+            if self.is_cancelled():
+                cancel_audio.set()  # 通知音频生成线程停止
+                yield {"type": "cancelled", "message": "研究任务已取消"}
+                audio_thread.join(timeout=2.0)
+                return
+                
             try:
                 event = audio_event_queue.get(timeout=0.1)
                 if event.get("type") == "_audio_done":
@@ -420,6 +504,11 @@ class DeepResearchAgent:
                 continue
         
         audio_thread.join(timeout=5.0)
+        
+        # 检查取消
+        if self.is_cancelled():
+            yield {"type": "cancelled", "message": "研究任务已取消"}
+            return
         
         audio_files = audio_result[0] if audio_result else []
         audio_count = len(audio_files) if audio_files else 0
