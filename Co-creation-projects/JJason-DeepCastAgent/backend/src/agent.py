@@ -252,6 +252,7 @@ class DeepResearchAgent:
                         "status": "in_progress",
                         "title": task.title,
                         "intent": task.intent,
+                        "query": task.query,
                         "note_id": task.note_id,
                         "note_path": task.note_path,
                     },
@@ -270,6 +271,7 @@ class DeepResearchAgent:
                         "detail": str(exc),
                         "title": task.title,
                         "intent": task.intent,
+                        "query": task.query,
                         "note_id": task.note_id,
                         "note_path": task.note_path,
                     },
@@ -307,12 +309,19 @@ class DeepResearchAgent:
             for thread in threads:
                 thread.join()
 
+        yield {
+            "type": "stage_change",
+            "stage": "report",
+            "message": "所有研究任务已完成，正在撰写深度研究报告...",
+        }
+        yield {"type": "log", "message": f"🧠 正在调用 {self.config.smart_llm_model} 模型撰写深度报告..."}
         report = self.reporting.generate_report(state)
         final_step = len(state.todo_items) + 1
         for event in self._drain_tool_events(state, step=final_step):
             yield event
         state.structured_report = report
         state.running_summary = report
+        yield {"type": "log", "message": f"✓ 报告撰写完成，共 {len(report)} 字符"}
 
         note_event = self._persist_final_report(state, report)
         if note_event:
@@ -325,28 +334,116 @@ class DeepResearchAgent:
             "note_path": state.report_note_path,
         }
 
-        yield {"type": "status", "message": "正在生成播客脚本..."}
+        yield {
+            "type": "stage_change",
+            "stage": "script",
+            "message": "正在将研究报告转化为双人对谈播客脚本...",
+        }
+        yield {"type": "log", "message": f"🧠 正在调用 {self.config.fast_llm_model} 模型生成播客脚本..."}
+        yield {"type": "log", "message": "脚本策划专家正在创作 Host (Xiayu) 与 Guest (Liwa) 的对话..."}
         script = self.script_generator.generate_script(state)
         for event in self._drain_tool_events(state):
             yield event
         state.podcast_script = script
+        
+        script_turns = len(script) if script else 0
+        yield {"type": "log", "message": f"✓ 脚本生成完成，共 {script_turns} 轮对话"}
+        
+        if script_turns == 0:
+            yield {"type": "log", "message": "⚠️ 警告：脚本为空，可能是解析失败，请检查后端日志"}
+        
         yield {
             "type": "podcast_script",
             "script": script,
+            "turns": script_turns,
         }
 
-        yield {"type": "status", "message": "正在生成语音文件..."}
+        yield {
+            "type": "stage_change",
+            "stage": "audio",
+            "message": "正在调用 TTS 语音引擎生成音频...",
+        }
         task_id = f"task_{state.report_note_id}" if state.report_note_id else "task_default"
-        audio_files = self.audio_generator.generate_audio(script, task_id)
+        
+        # 使用队列实现实时流式音频进度
+        audio_event_queue: Queue[dict[str, Any]] = Queue()
+        audio_result: list = []
+        audio_error: list = []
+        
+        def audio_progress_callback(current, total, role, preview):
+            """将进度事件放入队列以实现实时更新"""
+            audio_event_queue.put({
+                "type": "audio_progress",
+                "current": current,
+                "total": total,
+                "role": role,
+                "preview": preview,
+                "message": f"[TTS {current}/{total}] 正在为 {role} 生成语音: {preview}",
+            })
+        
+        def run_audio_generation():
+            """在单独线程中运行音频生成"""
+            try:
+                files = self.audio_generator.generate_audio(script, task_id, audio_progress_callback)
+                audio_result.append(files)
+            except Exception as e:
+                audio_error.append(str(e))
+            finally:
+                audio_event_queue.put({"type": "_audio_done"})
+        
+        yield {"type": "log", "message": f"准备为 {script_turns} 段对话生成语音..."}
+        
+        yield {
+            "type": "audio_start",
+            "total": script_turns,
+            "message": f"开始生成 {script_turns} 段语音",
+        }
+        
+        # 在独立线程中启动音频生成
+        audio_thread = Thread(target=run_audio_generation, daemon=True)
+        audio_thread.start()
+        
+        # 实时流式传输进度事件
+        while True:
+            try:
+                event = audio_event_queue.get(timeout=0.1)
+                if event.get("type") == "_audio_done":
+                    break
+                yield event
+                # 每个片段完成后发送成功日志
+                if event.get("type") == "audio_progress":
+                    yield {
+                        "type": "log", 
+                        "message": f"[TTS {event['current']}/{event['total']}] ✓ {event['role']} 语音生成成功"
+                    }
+            except Empty:
+                continue
+        
+        audio_thread.join(timeout=5.0)
+        
+        audio_files = audio_result[0] if audio_result else []
+        audio_count = len(audio_files) if audio_files else 0
+        
+        if audio_error:
+            yield {"type": "log", "message": f"⚠️ 音频生成出错: {audio_error[0]}"}
+        
+        yield {"type": "log", "message": f"语音生成完成，成功 {audio_count}/{script_turns} 段"}
+        
         yield {
             "type": "audio_generated",
             "files": audio_files,
+            "count": audio_count,
         }
 
-        yield {"type": "status", "message": "正在合成完整播客..."}
+        yield {
+            "type": "stage_change",
+            "stage": "synthesis",
+            "message": "正在合成完整播客音频文件...",
+        }
+        yield {"type": "log", "message": "使用 FFmpeg 拼接所有语音片段..."}
         podcast_file = self.podcast_synthesizer.synthesize_podcast(audio_files, task_id)
         if podcast_file:
-             yield {
+            yield {
                 "type": "podcast_ready",
                 "file": podcast_file,
             }
@@ -484,6 +581,8 @@ class DeepResearchAgent:
                 "type": "task_status",
                 "task_id": task.id,
                 "status": "completed",
+                "title": task.title,
+                "intent": task.intent,
                 "summary": task.summary,
                 "sources_summary": task.sources_summary,
                 "note_id": task.note_id,

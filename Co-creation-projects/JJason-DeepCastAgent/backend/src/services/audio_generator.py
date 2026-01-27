@@ -6,7 +6,7 @@ import logging
 import os
 import requests
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Callable
 
 from config import Configuration
 from pydub import AudioSegment
@@ -35,13 +35,19 @@ class AudioGenerationService:
             except Exception as e:
                 logger.error("Failed to create audio output directory: %s", e)
 
-    def generate_audio(self, script: List[dict[str, str]], task_id: str = "default") -> List[str]:
+    def generate_audio(
+        self, 
+        script: List[dict[str, str]], 
+        task_id: str = "default",
+        progress_callback: Optional[Callable[[int, int, str, str], None]] = None
+    ) -> List[str]:
         """
         为给定的脚本生成音频文件。
         
         Args:
             script: 对话回合列表，例如 [{"role": "Host", "content": "..."}, ...]
             task_id: 当前任务/会话的唯一标识符
+            progress_callback: 可选的进度回调函数，签名为 (current, total, role, content_preview) -> None
             
         Returns:
             生成的音频文件的路径列表
@@ -55,6 +61,7 @@ class AudioGenerationService:
             return []
 
         generated_files = []
+        total = len(script)
         
         for index, turn in enumerate(script):
             role = turn.get("role", "")
@@ -62,6 +69,11 @@ class AudioGenerationService:
             
             if not role or not content:
                 continue
+            
+            # 调用进度回调
+            if progress_callback:
+                content_preview = content[:30] + "..." if len(content) > 30 else content
+                progress_callback(index + 1, total, role, content_preview)
                 
             voice_id = self._get_voice_for_role(role)
             if not voice_id:
@@ -71,10 +83,13 @@ class AudioGenerationService:
             file_name = f"{task_id}_{index:03d}_{role}.mp3"
             file_path = self._output_dir / file_name
             
+            logger.info("[TTS %d/%d] 正在为 %s 生成语音: %s...", index + 1, total, role, content[:20])
+            
             if self._call_tts_api(content, voice_id, file_path):
                 generated_files.append(str(file_path))
+                logger.info("[TTS %d/%d] ✓ %s 语音生成成功", index + 1, total, role)
             else:
-                logger.error("Failed to generate audio for turn %d (%s)", index, role)
+                logger.error("[TTS %d/%d] ✗ %s 语音生成失败", index + 1, total, role)
                 
         logger.info("Generated %d audio files for task %s", len(generated_files), task_id)
         return generated_files

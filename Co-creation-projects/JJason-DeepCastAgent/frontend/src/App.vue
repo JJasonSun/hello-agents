@@ -49,6 +49,7 @@
         <div class="production-content">
           <header class="production-header">
             <h2>正在制作您的播客</h2>
+            <p class="production-topic">「{{ form.topic }}」</p>
             <button class="cancel-btn" @click="cancelProduction">取消</button>
           </header>
 
@@ -56,51 +57,47 @@
             <div class="stage-step" :class="{ active: productionStage === 'research', completed: isStageCompleted('research') }">
               <div class="step-icon">🔍</div>
               <div class="step-label">深度研究</div>
+              <div class="step-progress" v-if="productionStage === 'research' && totalTasks > 0">
+                {{ completedTasks }}/{{ totalTasks }}
+              </div>
             </div>
-            <div class="stage-line"></div>
+            <div class="stage-line" :class="{ active: isStageCompleted('research') }"></div>
             <div class="stage-step" :class="{ active: productionStage === 'script', completed: isStageCompleted('script') }">
               <div class="step-icon">📝</div>
               <div class="step-label">剧本创作</div>
             </div>
-            <div class="stage-line"></div>
+            <div class="stage-line" :class="{ active: isStageCompleted('script') }"></div>
             <div class="stage-step" :class="{ active: productionStage === 'audio', completed: isStageCompleted('audio') }">
               <div class="step-icon">🎧</div>
               <div class="step-label">音频合成</div>
-            </div>
-          </div>
-
-          <div class="terminal-log" v-if="logs.length > 0">
-            <div class="log-content" ref="logContainer">
-              <div v-for="(log, i) in logs" :key="i" class="log-entry">
-                <span class="log-time">{{ log.time }}</span>
-                <span class="log-msg">{{ log.message }}</span>
+              <div class="step-progress" v-if="productionStage === 'audio' && audioProgress.total > 0">
+                {{ audioProgress.current }}/{{ audioProgress.total }}
               </div>
             </div>
           </div>
 
-          <div class="todo-list-container" v-if="todoList.length > 0">
-            <h3>📋 研究任务清单</h3>
-            <div class="todo-items">
-              <div 
-                v-for="task in todoList" 
-                :key="task.id" 
-                class="todo-item" 
-                :class="task.status"
-              >
-                <div class="task-status-icon">
-                  <span v-if="task.status === 'pending'">⏳</span>
-                  <span v-else-if="task.status === 'in_progress'">🔄</span>
-                  <span v-else-if="task.status === 'completed'">✅</span>
-                  <span v-else-if="task.status === 'skipped'">⏭️</span>
-                  <span v-else-if="task.status === 'failed'">❌</span>
-                </div>
-                <div class="task-content">
-                  <div class="task-header">
-                    <span class="task-title">{{ task.title }}</span>
-                    <span class="task-intent">{{ task.intent }}</span>
-                  </div>
-                  <div class="task-summary" v-if="task.summary" v-html="md.render(task.summary)"></div>
-                </div>
+          <!-- 当前执行状态卡片 -->
+          <div class="current-status-card" v-if="currentStatusMessage">
+            <div class="status-indicator"></div>
+            <span class="status-text">{{ currentStatusMessage }}</span>
+          </div>
+
+          <!-- 终端风格日志输出 -->
+          <div class="terminal-log">
+            <div class="log-header">
+              <span class="log-header-title">执行日志 (Terminal)</span>
+              <span class="log-count">{{ logs.length }} lines</span>
+            </div>
+            <div class="log-content" ref="logContainer">
+              <div v-for="(log, i) in logs" :key="i" class="log-entry" :class="getLogClass(log.message)">
+                <span class="log-time">{{ log.time }}</span>
+                <span class="log-msg">{{ log.message }}</span>
+              </div>
+              <div v-if="logs.length === 0" class="log-placeholder">等待执行...</div>
+              <!-- 等待动画指示器 -->
+              <div v-if="isWaiting && logs.length > 0" class="log-entry log-waiting">
+                <span class="log-time">{{ new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) }}</span>
+                <span class="log-msg waiting-indicator">⏳ 处理中{{ waitingDots }}</span>
               </div>
             </div>
           </div>
@@ -191,6 +188,10 @@
 <script lang="ts" setup>
 import { reactive, ref, computed, nextTick, watch } from "vue";
 import { runResearchStream, type ResearchStreamEvent } from "./services/api";
+import MarkdownIt from "markdown-it";
+
+// Markdown renderer
+const md = new MarkdownIt();
 
 // --- Types ---
 type ViewState = "setup" | "producing" | "player";
@@ -230,6 +231,39 @@ const researchProgress = computed(() => {
   return `(${completedTasks.value}/${totalTasks.value})`;
 });
 
+// Audio Progress State (新增)
+const audioProgress = reactive({
+  current: 0,
+  total: 0,
+  role: ""
+});
+
+// Current Status Message (新增)
+const currentStatusMessage = ref("");
+
+// 等待动画状态
+const isWaiting = ref(false);
+const waitingDots = ref(".");
+let waitingInterval: ReturnType<typeof setInterval> | null = null;
+
+// 启动等待动画
+function startWaitingAnimation() {
+  isWaiting.value = true;
+  waitingDots.value = ".";
+  waitingInterval = setInterval(() => {
+    waitingDots.value = waitingDots.value.length >= 3 ? "." : waitingDots.value + ".";
+  }, 500);
+}
+
+// 停止等待动画
+function stopWaitingAnimation() {
+  isWaiting.value = false;
+  if (waitingInterval) {
+    clearInterval(waitingInterval);
+    waitingInterval = null;
+  }
+}
+
 // Data
 const podcastScript = ref<PodcastMessage[]>([]);
 const reportMarkdown = ref("");
@@ -240,6 +274,37 @@ const currentTask = ref<any>(null); // 简化的任务状态
 const audioPlayer = ref<HTMLAudioElement | null>(null);
 const logContainer = ref<HTMLElement | null>(null);
 let abortController: AbortController | null = null;
+
+// Helper: 根据日志内容返回样式类（终端风格）
+function getLogClass(message: string): string {
+  // 阶段变更 - 绿色高亮
+  if (message.includes("[STAGE]") || message.includes("═══")) return "log-stage";
+  // 任务状态
+  if (message.includes("[TASK")) return "log-task";
+  // 工具调用
+  if (message.includes("[TOOL]")) return "log-tool";
+  // 来源信息
+  if (message.includes("[SOURCES]")) return "log-sources";
+  // 成功/完成
+  if (message.includes("✅") || message.includes("完成") || message.includes("SUCCESS")) return "log-success";
+  // 错误
+  if (message.includes("❌") || message.includes("失败") || message.includes("ERROR")) return "log-error";
+  // 警告
+  if (message.includes("⚠️") || message.includes("WARNING")) return "log-warning";
+  // 开始/启动
+  if (message.includes("🚀") || message.includes("开始") || message.includes("START")) return "log-start";
+  // 规划
+  if (message.includes("📋") || message.includes("PLAN")) return "log-plan";
+  // 搜索
+  if (message.includes("🔍") || message.includes("SEARCH")) return "log-search";
+  // 音频
+  if (message.includes("🎤") || message.includes("AUDIO") || message.includes("TTS")) return "log-audio";
+  // 后端日志
+  if (message.includes("💬")) return "log-backend";
+  // INFO 级别（默认）
+  if (message.includes("INFO:")) return "log-info";
+  return "";
+}
 
 // --- Computed ---
 
@@ -273,11 +338,19 @@ async function startProduction() {
   todoList.value = [];
   totalTasks.value = 0;
   completedTasks.value = 0;
+  // 重置新增的状态
+  audioProgress.current = 0;
+  audioProgress.total = 0;
+  audioProgress.role = "";
+  currentStatusMessage.value = "正在初始化...";
 
   abortController = new AbortController();
+  
+  // 启动等待动画
+  startWaitingAnimation();
 
   addLog("🚀 启动 DeepCast 制作流程...");
-  addLog(`主题: ${form.topic}`);
+  addLog(`📌 主题: 「${form.topic}」`);
 
   try {
     await runResearchStream(
@@ -292,62 +365,93 @@ async function startProduction() {
       addLog(`❌ 错误: ${err}`);
       alert("制作失败，请查看日志。");
     }
+  } finally {
+    // 停止等待动画
+    stopWaitingAnimation();
   }
 }
 
 function handleStreamEvent(event: ResearchStreamEvent) {
+  // 0. Log event - 直接显示后端日志
+  if (event.type === "log") {
+    const msg = String((event as any).message || "");
+    addLog(`INFO: ${msg}`);
+    return;
+  }
+
+  // 0.5. Stage Change (阶段切换事件)
+  if (event.type === "stage_change") {
+    const payload = event as any;
+    const stage = payload.stage;
+    const message = payload.message || "";
+    
+    // 更新当前状态消息
+    currentStatusMessage.value = message;
+    
+    // 更新当前阶段并记录日志
+    addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    addLog(`📌 [STAGE] ${stage.toUpperCase()} - ${message}`);
+    addLog(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    
+    if (stage === "report") {
+      productionStage.value = "research";
+    } else if (stage === "script") {
+      productionStage.value = "script";
+    } else if (stage === "audio") {
+      productionStage.value = "audio";
+    }
+    return;
+  }
+
   // 1. Tool Calls (增加执行细节)
   if (event.type === "tool_call") {
     const payload = event as any;
     const tool = payload.tool;
     const agent = payload.agent || "Agent";
+    const taskId = payload.task_id;
+    const noteId = payload.note_id;
+    const params = payload.parameters || payload.parsed_parameters || {};
     
-    // 解析具体操作
-    if (tool === "search") {
-      // 从参数中提取查询词（如果可能）
-      // 假设参数结构 { input: "..." }
-      // 由于 parameters 是 Record<string, unknown>，我们尝试转换为字符串
-      let query = "";
-      if (payload.parameters && typeof payload.parameters.input === "string") {
-        query = payload.parameters.input;
-      }
-      addLog(`🔍 ${agent} 正在搜索: ${query || "相关信息"}`);
-    } else if (tool === "note") {
-      const action = payload.parameters?.action;
-      if (action === "read") {
-        addLog(`📖 ${agent} 正在阅读笔记`);
-      } else if (action === "create" || action === "update") {
-        addLog(`📝 ${agent} 正在记录关键信息`);
-      }
+    // 构建详细的日志信息，类似后端 INFO 输出
+    let logParts = [`[TOOL] agent=${agent} tool=${tool}`];
+    if (taskId) logParts.push(`task_id=${taskId}`);
+    if (noteId) logParts.push(`note_id=${noteId}`);
+    
+    // 解析具体操作并添加关键参数
+    if (tool === "note") {
+      const action = params.action;
+      const title = params.title;
+      if (action) logParts.push(`action=${action}`);
+      if (title) logParts.push(`title="${title}"`);
+      addLog(`📝 ${logParts.join(' ')}`);
+    } else if (tool === "search") {
+      let query = params.input || params.query || "";
+      if (query) logParts.push(`query="${query.slice(0, 50)}${query.length > 50 ? '...' : ''}"`);
+      addLog(`🔍 ${logParts.join(' ')}`);
     } else {
-      addLog(`🔧 ${agent} 调用了工具: ${tool}`);
+      addLog(`🔧 ${logParts.join(' ')}`);
     }
     return;
   }
 
   // 2. Sources (发现来源)
   if (event.type === "sources") {
-    addLog("📚 发现新的信息来源，正在分析...");
+    const payload = event as any;
+    const taskId = payload.task_id;
+    const backend = payload.backend;
+    let msg = `[SOURCES] task_id=${taskId}`;
+    if (backend) msg += ` backend=${backend}`;
+    const sourcesCount = payload.latest_sources ? payload.latest_sources.split('\n').filter((s: string) => s.trim()).length : 0;
+    msg += ` found=${sourcesCount} sources`;
+    addLog(`📚 ${msg}`);
     return;
   }
 
   // 3. Status Updates
   if (event.type === "status") {
-    // 翻译或直接显示
+    // 直接显示后端发来的消息
     let msg = String(event.message);
-    if (msg.includes("初始化")) msg = "初始化研究流程...";
-    if (msg.includes("脚本")) msg = "正在创作播客剧本...";
-    if (msg.includes("语音") || msg.includes("音频")) msg = "正在合成语音...";
-    
-    // Translation for known English messages
-    if (msg.includes("Researching")) msg = "正在进行深度搜索...";
-    if (msg.includes("Generating")) msg = "正在生成内容...";
-    if (msg.includes("Analyzing")) msg = "正在分析数据...";
-    
-    addLog(`ℹ️ ${msg}`);
-    
-    if (String(event.message).includes("脚本")) productionStage.value = "script";
-    if (String(event.message).includes("语音") || String(event.message).includes("音频")) productionStage.value = "audio";
+    addLog(`ℹ️ [STATUS] ${msg}`);
   }
 
   // 3.5 Todo List (Total Tasks)
@@ -355,9 +459,16 @@ function handleStreamEvent(event: ResearchStreamEvent) {
     console.log("Received todo_list event:", event);
     const payload = event as any;
     if (payload.tasks && Array.isArray(payload.tasks)) {
-      todoList.value = payload.tasks; // Initialize list
+      todoList.value = payload.tasks;
       totalTasks.value = payload.tasks.length;
-      addLog(`📋 规划了 ${totalTasks.value} 个研究任务`);
+      addLog(`📋 [PLAN] 研究规划专家创建了 ${totalTasks.value} 个任务:`);
+      // 列出每个任务的标题和查询
+      payload.tasks.forEach((task: any, idx: number) => {
+        addLog(`   └─ Task ${task.id}: ${task.title}`);
+        if (task.query) {
+          addLog(`      query="${task.query.slice(0, 60)}${task.query.length > 60 ? '...' : ''}"`);
+        }
+      });
     } else {
       console.warn("Received todo_list but tasks is empty or invalid", payload);
     }
@@ -366,80 +477,146 @@ function handleStreamEvent(event: ResearchStreamEvent) {
   // 4. Research Updates
   if (event.type === "task_status") {
     const payload = event as any;
-    if (payload.status === "in_progress") {
-      currentTask.value = payload; // 简单的任务更新
-      addLog(`👉 开始执行任务: ${payload.title || '未知任务'}`);
-    } else if (payload.status === "completed") {
+    // 更新内部状态
+    const taskIndex = todoList.value.findIndex(t => t.id === payload.task_id);
+    if (taskIndex !== -1) {
+      todoList.value[taskIndex].status = payload.status;
+      if (payload.summary) {
+        todoList.value[taskIndex].summary = payload.summary;
+      }
+    }
+    
+    const taskId = payload.task_id;
+    const status = payload.status;
+    const title = payload.title || "";
+    const query = payload.query || "";
+    
+    // 截断长查询内容
+    const truncateText = (text: string, max: number) => 
+      text.length > max ? text.slice(0, max) + "..." : text;
+    
+    if (status === "in_progress") {
+      currentTask.value = payload;
+      addLog(`🚀 [TASK ${taskId}] status=in_progress title="${title}"`);
+      if (payload.intent) {
+        addLog(`   ├─ intent: ${payload.intent}`);
+      }
+      if (query) {
+        addLog(`   └─ query: "${truncateText(query, 60)}"`);
+      }
+    } else if (status === "completed") {
       completedTasks.value++;
-      addLog(`✅ 任务完成: ${payload.title}`);
-    } else if (payload.status === "skipped") {
+      addLog(`✅ [TASK ${taskId}] status=completed (${completedTasks.value}/${totalTasks.value}) title="${title}"`);
+    } else if (status === "skipped") {
       completedTasks.value++;
-      addLog(`⏭️ 任务跳过: ${payload.title}`);
-    } else if (payload.status === "failed") {
+      addLog(`⏭️ [TASK ${taskId}] status=skipped title="${title}"`);
+    } else if (status === "failed") {
       completedTasks.value++;
-      addLog(`❌ 任务失败: ${payload.title}`);
+      addLog(`❌ [TASK ${taskId}] status=failed title="${title}" error="${payload.detail || 'unknown'}"`);
     }
   }
   
+  // task_summary_chunk - 显示摘要片段（可选，减少日志噪音）
   if (event.type === "task_summary_chunk") {
       const payload = event as any;
       const taskIndex = todoList.value.findIndex(t => t.id === payload.task_id);
       
       if (taskIndex !== -1) {
-        // Initialize summary if it doesn't exist
         if (!todoList.value[taskIndex].summary) {
           todoList.value[taskIndex].summary = "";
+          // 只在开始时显示一条日志
+          addLog(`📄 [SUMMARY] task_id=${payload.task_id} 正在生成摘要...`);
         }
-        
-        // Append chunk
-        // Note: You might want to strip <think> tags if they leak through, 
-        // but backend usually handles that.
         todoList.value[taskIndex].summary += payload.content;
-        
-        // Auto-scroll logic could go here if we had a ref to the specific item
       }
   }
 
   // 5. Report Ready
   if (event.type === "final_report") {
     reportMarkdown.value = String(event.report);
-    addLog("📄 深度研究报告已生成。");
+    currentStatusMessage.value = "深度研究报告已完成";
+    const reportLen = String(event.report).length;
+    addLog(`📄 [REPORT] status=completed length=${reportLen} chars`);
   }
 
   // 6. Script Ready
   if (event.type === "podcast_script") {
     const payload = event as any;
-    podcastScript.value = payload.script;
+    podcastScript.value = payload.script || [];
+    const turns = payload.turns ?? payload.script?.length ?? 0;
     productionStage.value = "audio";
-    addLog("🎙️ 播客剧本创作完成。");
+    audioProgress.total = turns;
+    audioProgress.current = 0;
+    currentStatusMessage.value = turns > 0 
+      ? `脚本完成，准备生成 ${turns} 段语音` 
+      : "脚本为空，跳过音频生成";
+    addLog(`🎙️ [SCRIPT] status=completed turns=${turns}`);
+    
+    if (turns === 0) {
+      addLog(`⚠️ [WARNING] script is empty, JSON parsing may have failed`);
+    }
   }
 
-  // 7. Audio Generation (Detail)
+  // 6.5. Audio Start
+  if (event.type === "audio_start") {
+    const payload = event as any;
+    audioProgress.total = payload.total || 0;
+    audioProgress.current = 0;
+    addLog(`🎵 [AUDIO] status=started total=${payload.total}`);
+  }
+
+  // 7. Audio Progress
+  if (event.type === "audio_progress") {
+    const payload = event as any;
+    audioProgress.current = payload.current;
+    audioProgress.total = payload.total;
+    audioProgress.role = payload.role;
+    currentStatusMessage.value = `TTS ${payload.current}/${payload.total}: ${payload.role}`;
+    addLog(`🎤 [TTS ${payload.current}/${payload.total}] role=${payload.role} status=generating`);
+  }
+
+  // 8. Audio Generation Complete
   if (event.type === "audio_generated") {
-    const files = (event as any).files || [];
-    addLog(`🎵 已生成 ${files.length} 个音频片段。`);
+    const payload = event as any;
+    const count = payload.count ?? payload.files?.length ?? 0;
+    currentStatusMessage.value = count > 0 
+      ? `${count} 个音频片段已生成，正在合成...` 
+      : "音频生成失败";
+    addLog(`🎵 [AUDIO] status=completed count=${count}`);
+    
+    if (count === 0) {
+      addLog(`⚠️ [WARNING] no audio files generated, check TTS config`);
+    }
   }
 
-  // 8. Podcast Ready (Final)
+  // 9. Podcast Ready (Final)
   if (event.type === "podcast_ready") {
     const payload = event as any;
-    // 后端返回的是文件路径，我们需要转换为 URL
-    // 假设后端挂载了 /output 静态目录
-    // payload.file 是绝对路径，我们需要提取文件名
     const filename = String(payload.file).split(/[\\/]/).pop();
     if (filename) {
-      // 获取当前 API base URL (从 api.ts 逻辑推断，这里简化处理)
-      // 在生产环境中应该从配置读取，这里假设是 localhost:8000
       const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
       audioUrl.value = `${baseUrl}/output/${filename}`;
-      addLog("🎉 播客制作完成！即将开始播放...");
+      currentStatusMessage.value = "🎉 播客制作完成！";
+      addLog(`🎉 [PODCAST] status=ready file=${filename}`);
       productionStage.value = "done";
       
-      // 延迟跳转到播放页
       setTimeout(() => {
         currentView.value = "player";
       }, 1500);
     }
+  }
+
+  // 10. Done event
+  if (event.type === "done") {
+    currentStatusMessage.value = "全部完成";
+    addLog(`✅ [DONE] all tasks completed`);
+  }
+  
+  // 11. Backend Log event (直接显示后端日志)
+  if (event.type === "log") {
+    const payload = event as any;
+    const msg = payload.message || "";
+    addLog(`💬 INFO: ${msg}`);
   }
 }
 
@@ -448,13 +625,17 @@ function cancelProduction() {
     abortController.abort();
     abortController = null;
   }
+  stopWaitingAnimation();
   currentView.value = "setup";
+  currentStatusMessage.value = "";
 }
 
 function resetApp() {
   currentView.value = "setup";
   form.topic = "";
   isPlaying.value = false;
+  currentStatusMessage.value = "";
+  stopWaitingAnimation();
 }
 
 // Audio Controls
@@ -848,39 +1029,216 @@ select {
   margin: 0 1rem;
   position: relative;
   top: -14px;
+  transition: background 0.3s ease;
+}
+
+.stage-line.active {
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+}
+
+/* 当前状态卡片 */
+.current-status-card {
+  width: 100%;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.status-indicator {
+  width: 10px;
+  height: 10px;
+  background: #3b82f6;
+  border-radius: 50%;
+  animation: pulse-status 1.5s infinite;
+}
+
+@keyframes pulse-status {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+  50% { opacity: 0.7; box-shadow: 0 0 0 8px rgba(59, 130, 246, 0); }
+}
+
+.status-text {
+  color: #93c5fd;
+  font-size: 0.95rem;
+  font-weight: 500;
 }
 
 .terminal-log {
   width: 100%;
-  background: #000;
+  background: #0a0a0a;
   border-radius: 8px;
-  padding: 1rem;
-  font-family: 'Fira Code', monospace;
-  font-size: 0.9rem;
-  height: 150px;
-  margin-bottom: 2rem;
-  border: 1px solid #333;
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.82rem;
+  height: 450px;
+  margin-bottom: 1.5rem;
+  border: 1px solid #1e293b;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background: #111827;
+  border-bottom: 1px solid #1e293b;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.log-header-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.log-header-title::before {
+  content: '●';
+  color: #4ade80;
+  font-size: 0.6rem;
+}
+
+.log-count {
+  color: #475569;
 }
 
 .log-content {
-  height: 100%;
+  height: calc(100% - 32px);
   overflow-y: auto;
+  padding: 0.75rem 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.35rem;
 }
 
 .log-entry {
   display: flex;
-  gap: 1rem;
+  gap: 0.75rem;
+  padding: 0.2rem 0;
+  border-radius: 2px;
+  line-height: 1.4;
 }
 
 .log-time {
-  color: #64748b;
+  color: #475569;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+  min-width: 70px;
 }
 
 .log-msg {
-  color: #e2e8f0;
+  color: #cbd5e1;
+  word-break: break-word;
+  flex: 1;
+}
+
+.log-placeholder {
+  color: #475569;
+  font-style: italic;
+  padding: 1rem 0;
+  text-align: center;
+}
+
+/* 等待动画指示器 */
+.log-entry.log-waiting .log-msg {
+  color: #fbbf24;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.waiting-indicator {
+  font-family: monospace;
+  letter-spacing: 2px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* 日志类型样式 - 终端风格 */
+.log-entry.log-success .log-msg { color: #4ade80; }
+.log-entry.log-error .log-msg { color: #f87171; }
+.log-entry.log-warning .log-msg { color: #fbbf24; }
+.log-entry.log-start .log-msg { color: #60a5fa; }
+.log-entry.log-plan .log-msg { color: #a78bfa; }
+.log-entry.log-search .log-msg { color: #fbbf24; }
+.log-entry.log-audio .log-msg { color: #f472b6; }
+
+/* INFO 级别日志（工具调用） */
+.log-entry.log-info .log-msg { 
+  color: #94a3b8;
+}
+
+/* 阶段变更 */
+.log-entry.log-stage .log-msg { 
+  color: #34d399; 
+  font-weight: 600;
+  border-left: 3px solid #34d399;
+  padding-left: 0.5rem;
+  margin-left: -0.5rem;
+}
+
+/* 后端日志 */
+.log-entry.log-backend .log-msg { 
+  color: #64748b;
+  font-style: italic;
+}
+
+/* 任务状态 */
+.log-entry.log-task .log-msg {
+  color: #60a5fa;
+}
+
+/* 工具调用 */
+.log-entry.log-tool .log-msg {
+  color: #a78bfa;
+}
+
+/* 来源信息 */
+.log-entry.log-sources .log-msg {
+  color: #fbbf24;
+}
+
+/* 步骤进度数字 */
+.step-progress {
+  font-size: 0.7rem;
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.15);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-top: 0.25rem;
+}
+
+/* 任务计数器 */
+.task-counter {
+  font-weight: normal;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+/* 旋转动画（用于进行中的任务图标） */
+.spinning {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 主题显示 */
+.production-topic {
+  color: #94a3b8;
+  font-size: 1rem;
+  margin-top: 0.25rem;
+  font-style: italic;
 }
 
 .research-preview {
