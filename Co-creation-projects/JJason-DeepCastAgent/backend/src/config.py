@@ -1,7 +1,7 @@
 import os
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -9,10 +9,8 @@ from pydantic import BaseModel, Field, field_validator
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
 class SearchAPI(Enum):
-    """可用的搜索 API 提供商。"""
+    """搜索 API 提供商（仅支持混合搜索：Tavily + SerpApi）。"""
     HYBRID = "hybrid"
-    TAVILY = "tavily"
-    SERPAPI = "serpapi"
 
 
 class Configuration(BaseModel):
@@ -31,7 +29,7 @@ class Configuration(BaseModel):
     search_api: SearchAPI = Field(
         default=SearchAPI.HYBRID,
         title="搜索 API",
-        description="使用的网络搜索 API (hybrid, tavily, serpapi)",
+        description="使用混合搜索引擎 (Tavily + SerpApi)",
     )
     enable_notes: bool = Field(
         default=True,
@@ -58,32 +56,32 @@ class Configuration(BaseModel):
         title="使用工具调用",
         description="使用工具调用而非 JSON 模式进行结构化输出",
     )
-    llm_api_key: Optional[str] = Field(
+    llm_api_key: str | None = Field(
         default=None,
         title="LLM API 密钥",
         description="使用自定义 OpenAI 兼容服务时的可选 API 密钥",
     )
-    llm_base_url: Optional[str] = Field(
+    llm_base_url: str | None = Field(
         default=None,
         title="LLM 基础 URL",
         description="使用自定义 OpenAI 兼容服务时的可选基础 URL",
     )
-    llm_model_id: Optional[str] = Field(
+    llm_model_id: str | None = Field(
         default=None,
         title="LLM 模型 ID",
         description="自定义 OpenAI 兼容服务的可选模型标识符",
     )
-    smart_llm_model: Optional[str] = Field(
+    smart_llm_model: str | None = Field(
         default="ecnu-reasoner",
         title="Smart LLM Model",
-        description="Model ID for complex reasoning tasks (e.g. Planning, Reporting)",
+        description="复杂推理任务使用的模型 ID (e.g. Planning, Reporting)",
     )
-    fast_llm_model: Optional[str] = Field(
+    fast_llm_model: str | None = Field(
         default="ecnu-max",
         title="Fast LLM Model",
-        description="Model ID for simple/fast tasks (e.g. Summarization)",
+        description="快速响应任务使用的模型 ID (e.g. Web Research, Script Generation)",
     )
-    tts_api_key: Optional[str] = Field(
+    tts_api_key: str | None = Field(
         default=None,
         title="TTS API 密钥",
         description="TTS 服务的 API 密钥",
@@ -103,17 +101,17 @@ class Configuration(BaseModel):
         title="音频输出目录",
         description="保存生成的音频文件的目录",
     )
-    ffmpeg_path: Optional[str] = Field(
+    ffmpeg_path: str | None = Field(
         default=None,
         title="FFmpeg 路径",
         description="ffmpeg 可执行文件的路径",
     )
-    tavily_api_key: Optional[str] = Field(
+    tavily_api_key: str | None = Field(
         default=None,
         title="Tavily API 密钥",
         description="Tavily 搜索的 API 密钥",
     )
-    serpapi_api_key: Optional[str] = Field(
+    serpapi_api_key: str | None = Field(
         default=None,
         title="SerpApi 密钥",
         description="SerpApi 的 API 密钥",
@@ -131,7 +129,7 @@ class Configuration(BaseModel):
         return v
 
     @classmethod
-    def from_env(cls, overrides: Optional[dict[str, Any]] = None) -> "Configuration":
+    def from_env(cls, overrides: dict[str, Any] | None = None) -> "Configuration":
         """
         使用环境变量和覆盖项创建配置对象。
         
@@ -141,7 +139,6 @@ class Configuration(BaseModel):
         Returns:
             初始化的配置对象。
         """
-
         raw_values: dict[str, Any] = {}
 
         # 基于字段名从环境变量加载值
@@ -192,7 +189,6 @@ class Configuration(BaseModel):
 
         return cls(**raw_values)
 
-    def resolved_model(self) -> Optional[str]:
+    def resolved_model(self) -> str | None:
         """尽力解析要使用的模型标识符。"""
-
         return self.llm_model_id

@@ -106,7 +106,7 @@ cp env.example .env
 
 ```bash
 cd backend
-python src/main.py
+uv run src/main.py
 ```
 
 **启动前端**:

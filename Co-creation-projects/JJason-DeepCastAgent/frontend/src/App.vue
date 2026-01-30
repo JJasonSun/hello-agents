@@ -24,16 +24,9 @@
           </div>
 
           <div class="settings-row">
-            <div class="setting-item">
-              <label>搜索引擎</label>
-              <div class="select-wrapper">
-                <select v-model="form.searchApi">
-                  <option value="hybrid">混合搜索 (Tavily + SerpApi)</option>
-                  <option value="tavily">仅 Tavily</option>
-                  <option value="serpapi">仅 SerpApi</option>
-                </select>
-                <span class="select-arrow">▼</span>
-              </div>
+            <div class="setting-item search-hint">
+              <span class="hint-icon">🔍</span>
+              <span class="hint-text">使用混合搜索引擎 (Tavily + SerpApi)</span>
             </div>
           </div>
 
@@ -49,20 +42,18 @@
         <div class="production-content">
           <!-- 顶部：标题和控制 -->
           <header class="production-header">
-            <div class="header-left">
-              <h2>正在制作您的播客</h2>
-              <p class="production-topic">「{{ form.topic }}」</p>
-            </div>
-            <button class="cancel-btn" @click="cancelProduction">取消</button>
+            <h2>{{ podcastReady ? '🎉 播客制作完成！' : '正在制作您的播客' }}</h2>
+            <button v-if="!podcastReady" class="cancel-btn" @click="cancelProduction">取消</button>
           </header>
+          <p class="production-topic">「{{ form.topic }}」</p>
 
           <!-- 阶段进度指示器 -->
-          <div class="stage-monitor">
+          <div class="stage-monitor" v-if="!podcastReady">
             <div class="stage-step" :class="{ active: productionStage === 'research', completed: isStageCompleted('research') }">
               <div class="step-icon">🔍</div>
               <div class="step-label">深度研究</div>
-              <div class="step-progress" v-if="productionStage === 'research' && totalTasks > 0">
-                {{ completedTasks }}/{{ totalTasks }}
+              <div class="step-progress" v-if="productionStage === 'research' && (todoList.length > 0 || totalTasks > 0)">
+                {{ completedTasks }}/{{ todoList.length || totalTasks }}
               </div>
             </div>
             <div class="stage-line" :class="{ active: isStageCompleted('research') }"></div>
@@ -81,7 +72,7 @@
           </div>
 
           <!-- 当前执行状态卡片 -->
-          <div class="current-status-card" v-if="currentStatusMessage">
+          <div class="current-status-card" v-if="currentStatusMessage && !podcastReady">
             <div class="status-indicator"></div>
             <span class="status-text">{{ currentStatusMessage }}</span>
           </div>
@@ -226,8 +217,7 @@ interface PodcastMessage {
 const currentView = ref<ViewState>("setup");
 const productionStage = ref<ProductionStage>("research");
 const form = reactive({
-  topic: "",
-  searchApi: "hybrid"
+  topic: ""
 });
 
 const logs = ref<LogEntry[]>([]);
@@ -374,7 +364,7 @@ async function startProduction() {
 
   try {
     await runResearchStream(
-      { topic: form.topic, search_api: form.searchApi },
+      { topic: form.topic },
       handleStreamEvent,
       { signal: abortController.signal }
     );
@@ -396,6 +386,13 @@ function handleStreamEvent(event: ResearchStreamEvent) {
   if (event.type === "log") {
     const msg = String((event as any).message || "");
     addLog(`INFO: ${msg}`);
+    
+    // 解析 TTS 成功日志来更新进度 (格式: [TTS 6/13] ✓ Host 语音生成成功)
+    const ttsMatch = msg.match(/\[TTS (\d+)\/(\d+)\] ✓/);
+    if (ttsMatch) {
+      audioProgress.current = parseInt(ttsMatch[1], 10);
+      audioProgress.total = parseInt(ttsMatch[2], 10);
+    }
     return;
   }
 
@@ -497,23 +494,46 @@ function handleStreamEvent(event: ResearchStreamEvent) {
   // 4. Research Updates
   if (event.type === "task_status") {
     const payload = event as any;
-    // 更新内部状态
-    const taskIndex = todoList.value.findIndex(t => t.id === payload.task_id);
-    if (taskIndex !== -1) {
-      todoList.value[taskIndex].status = payload.status;
-      if (payload.summary) {
-        todoList.value[taskIndex].summary = payload.summary;
-      }
-    }
-    
     const taskId = payload.task_id;
     const status = payload.status;
     const title = payload.title || "";
     const query = payload.query || "";
     
+    // 如果 todoList 为空但收到了 task_status，动态添加任务
+    if (todoList.value.length === 0 || !todoList.value.find(t => t.id === taskId)) {
+      todoList.value.push({
+        id: taskId,
+        title: title,
+        status: status,
+        query: query,
+        intent: payload.intent || "",
+      });
+      // 更新总任务数（基于已知的最大 task_id）
+      if (taskId > totalTasks.value) {
+        totalTasks.value = taskId;
+      }
+    }
+    
+    // 更新内部状态
+    const taskIndex = todoList.value.findIndex(t => t.id === taskId);
+    if (taskIndex !== -1) {
+      todoList.value[taskIndex].status = status;
+      if (payload.summary) {
+        todoList.value[taskIndex].summary = payload.summary;
+      }
+    }
+    
     // 截断长查询内容
     const truncateText = (text: string, max: number) => 
       text.length > max ? text.slice(0, max) + "..." : text;
+    
+    // 获取当前已知的总任务数
+    const getTotal = () => {
+      if (todoList.value.length > 0) return todoList.value.length;
+      if (totalTasks.value > 0) return totalTasks.value;
+      // 根据 task_id 推断（假设 task_id 是从 1 开始的连续数字）
+      return Math.max(taskId, completedTasks.value + 1);
+    };
     
     if (status === "in_progress") {
       currentTask.value = payload;
@@ -526,13 +546,13 @@ function handleStreamEvent(event: ResearchStreamEvent) {
       }
     } else if (status === "completed") {
       completedTasks.value++;
-      addLog(`✅ [TASK ${taskId}] status=completed (${completedTasks.value}/${totalTasks.value}) title="${title}"`);
+      addLog(`✅ [TASK ${taskId}] status=completed (${completedTasks.value}/${getTotal()}) title="${title}"`);
     } else if (status === "skipped") {
       completedTasks.value++;
-      addLog(`⏭️ [TASK ${taskId}] status=skipped title="${title}"`);
+      addLog(`⏭️ [TASK ${taskId}] status=skipped (${completedTasks.value}/${getTotal()}) title="${title}"`);
     } else if (status === "failed") {
       completedTasks.value++;
-      addLog(`❌ [TASK ${taskId}] status=failed title="${title}" error="${payload.detail || 'unknown'}"`);
+      addLog(`❌ [TASK ${taskId}] status=failed (${completedTasks.value}/${getTotal()}) title="${title}" error="${payload.detail || 'unknown'}"`);
     }
   }
   
@@ -572,10 +592,7 @@ function handleStreamEvent(event: ResearchStreamEvent) {
       ? `脚本完成，准备生成 ${turns} 段语音` 
       : "脚本为空，跳过音频生成";
     addLog(`🎙️ [SCRIPT] status=completed turns=${turns}`);
-    
-    if (turns === 0) {
-      addLog(`⚠️ [WARNING] script is empty, JSON parsing may have failed`);
-    }
+    // 不再输出额外的警告，后端会通过 log 事件发送
   }
 
   // 6.5. Audio Start
@@ -593,7 +610,7 @@ function handleStreamEvent(event: ResearchStreamEvent) {
     audioProgress.total = payload.total;
     audioProgress.role = payload.role;
     currentStatusMessage.value = `TTS ${payload.current}/${payload.total}: ${payload.role}`;
-    addLog(`🎤 [TTS ${payload.current}/${payload.total}] role=${payload.role} status=generating`);
+    // 不再输出 generating 日志，后端会在生成成功后发送 log 事件
   }
 
   // 8. Audio Generation Complete
@@ -616,25 +633,27 @@ function handleStreamEvent(event: ResearchStreamEvent) {
     const filename = String(payload.file).split(/[\\/]/).pop();
     if (filename) {
       const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
-      audioUrl.value = `${baseUrl}/output/${filename}`;
+      audioUrl.value = `${baseUrl}/output/audio/${filename}`;
       podcastReady.value = true;
+      productionStage.value = "done";
       currentStatusMessage.value = "🎉 播客制作完成！";
       addLog(`🎉 [PODCAST] status=ready file=${filename}`);
-      productionStage.value = "done";
+      // 停止等待动画
+      stopWaitingAnimation();
     }
   }
 
   // 10. Done event
   if (event.type === "done") {
-    currentStatusMessage.value = "全部完成";
     addLog(`✅ [DONE] all tasks completed`);
-  }
-  
-  // 11. Backend Log event (直接显示后端日志)
-  if (event.type === "log") {
-    const payload = event as any;
-    const msg = payload.message || "";
-    addLog(`💬 INFO: ${msg}`);
+    stopWaitingAnimation();
+    productionStage.value = "done";
+    // 如果播客已就绪，确保状态正确
+    if (podcastReady.value) {
+      currentStatusMessage.value = "🎉 播客制作完成！";
+    } else {
+      currentStatusMessage.value = "全部完成";
+    }
   }
 }
 
@@ -836,30 +855,24 @@ h1 {
   margin: 1.5rem 0;
 }
 
-.select-wrapper {
-  position: relative;
-}
-
-select {
-  width: 100%;
-  appearance: none;
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #fff;
+/* 搜索引擎提示样式 */
+.search-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   padding: 0.75rem 1rem;
+  background: rgba(96, 165, 250, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.2);
   border-radius: 8px;
-  font-size: 0.95rem;
-  cursor: pointer;
 }
 
-.select-arrow {
-  position: absolute;
-  right: 1rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #64748b;
-  pointer-events: none;
-  font-size: 0.8rem;
+.hint-icon {
+  font-size: 1rem;
+}
+
+.hint-text {
+  color: #94a3b8;
+  font-size: 0.9rem;
 }
 
 .cta-button {
@@ -908,11 +921,11 @@ select {
 .production-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
 }
 
-.header-left h2 {
+.production-header h2 {
   font-size: 1.5rem;
   margin: 0;
 }
@@ -920,7 +933,8 @@ select {
 .production-topic {
   color: #94a3b8;
   font-size: 1rem;
-  margin-top: 0.25rem;
+  margin-top: 0;
+  margin-bottom: 1rem;
   font-style: italic;
 }
 
@@ -1207,28 +1221,6 @@ select {
   background: rgba(0, 0, 0, 0.2);
   padding: 2px 8px;
   border-radius: 4px;
-}
-
-.production-header {
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 3rem;
-}
-
-.production-header h2 {
-  font-size: 1.5rem;
-  margin: 0;
-}
-
-.cancel-btn {
-  background: transparent;
-  border: 1px solid rgba(239, 68, 68, 0.5);
-  color: #fca5a5;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  cursor: pointer;
 }
 
 .stage-monitor {

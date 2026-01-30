@@ -19,7 +19,7 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 from agent import DeepResearchAgent
-from config import Configuration, SearchAPI
+from config import Configuration
 
 # 添加控制台日志处理程序
 logger.add(
@@ -43,10 +43,6 @@ class ResearchRequest(BaseModel):
     """触发研究运行的负载。"""
 
     topic: str = Field(..., description="用户提供的研究主题")
-    search_api: SearchAPI | None = Field(
-        default=None,
-        description="覆盖通过环境变量配置的默认搜索后端",
-    )
 
 class PodcastScript(BaseModel):
     """播客脚本内容模型。"""
@@ -81,12 +77,7 @@ def _mask_secret(value: str | None, visible: int = 4) -> str:
 
 
 def _build_config(payload: ResearchRequest) -> Configuration:
-    overrides: dict[str, Any] = {}
-
-    if payload.search_api is not None:
-        overrides["search_api"] = payload.search_api
-
-    return Configuration.from_env(overrides=overrides)
+    return Configuration.from_env()
 
 
 def create_app() -> FastAPI:
@@ -121,7 +112,7 @@ def create_app() -> FastAPI:
             config.llm_provider,
             config.resolved_model() or "unset",
             config.llm_base_url or "unset",
-            (config.search_api.value if isinstance(config.search_api, SearchAPI) else config.search_api),
+            config.search_api.value,
             config.max_web_research_loops,
             config.fetch_full_page,
             config.use_tool_calling,

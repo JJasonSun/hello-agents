@@ -1,5 +1,6 @@
 import os
 import sys
+
 from dotenv import load_dotenv
 
 # Add src to path
@@ -10,6 +11,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
 
 from config import Configuration
 from services.search import get_global_search_tool
+
 
 def test_search_configuration():
     print("Testing search configuration...")

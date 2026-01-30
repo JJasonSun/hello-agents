@@ -1,5 +1,5 @@
-import os
-import sys
+import os  # noqa: D100
+
 from pydub import AudioSegment
 
 """
@@ -20,7 +20,7 @@ def test_ffmpeg():
     if not os.path.exists(ffmpeg_path):
         print(f"❌ Warning: ffmpeg executable not found at {ffmpeg_path}")
     else:
-        print(f"✅ ffmpeg executable found.")
+        print("✅ ffmpeg executable found.")
     
     try:
         # 创建 1 秒的静音片段

@@ -415,14 +415,17 @@ class DeepResearchAgent:
         script_turns = len(script) if script else 0
         yield {"type": "log", "message": f"✓ 脚本生成完成，共 {script_turns} 轮对话"}
         
-        if script_turns == 0:
-            yield {"type": "log", "message": "⚠️ 警告：脚本为空，可能是解析失败，请检查后端日志"}
-        
         yield {
             "type": "podcast_script",
             "script": script,
             "turns": script_turns,
         }
+        
+        # 脚本为空时跳过音频生成
+        if script_turns == 0:
+            yield {"type": "log", "message": "⚠️ 警告：脚本为空，跳过音频生成"}
+            yield {"type": "done"}
+            return
 
         # 检查取消
         if self.is_cancelled():

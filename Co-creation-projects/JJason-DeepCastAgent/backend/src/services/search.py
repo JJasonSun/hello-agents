@@ -48,7 +48,6 @@ def dispatch_search(
     Returns:
         元组 (原始负载, 通知列表, 答案文本, 后端标签)。
     """
-
     search_api = get_config_value(config.search_api)
     search_tool = get_global_search_tool(config)
 
@@ -116,7 +115,6 @@ def prepare_research_context(
     Returns:
         元组 (来源摘要列表, 详细上下文文本)。
     """
-
     sources_summary = format_sources(search_result)
     context = deduplicate_and_format_sources(
         search_result or {"results": []},

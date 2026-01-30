@@ -3,7 +3,6 @@ const baseURL =
 
 export interface ResearchRequest {
   topic: string;
-  search_api?: string;
 }
 
 export interface ResearchStreamEvent {

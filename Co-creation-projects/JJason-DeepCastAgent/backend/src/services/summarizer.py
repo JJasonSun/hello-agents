@@ -54,10 +54,7 @@ class SummarizationService:
         agent = self._agent_factory()
 
         def flush_visible() -> Iterator[str]:
-            """
-            处理缓冲区，提取并 yield 所有不在 <think>...</think> 块中的可见文本。
-            如果遇到不完整的 <think> 标签，会暂停输出等待更多数据。
-            """  # noqa: D205
+            """处理缓冲区，提取并 yield 所有不在 <think>...</think> 块中的可见文本。如果遇到不完整的 <think> 标签，会暂停输出等待更多数据。"""
             nonlocal emit_index, raw_buffer
             while True:
                 start = raw_buffer.find("<think>", emit_index)
