@@ -539,6 +539,9 @@ class DeepResearchAgent:
                 "type": "podcast_ready",
                 "file": podcast_file,
             }
+            yield {"type": "log", "message": f"🎉 播客文件生成成功: {podcast_file}"}
+        else:
+            yield {"type": "log", "message": "⚠️ 播客合成失败，请检查 FFmpeg 配置"}
 
         yield {"type": "done"}
 

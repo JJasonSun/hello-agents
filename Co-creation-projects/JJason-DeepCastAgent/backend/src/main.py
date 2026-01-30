@@ -30,15 +30,6 @@ logger.add(
 )
 
 
-# 添加错误日志文件处理程序
-logger.add(
-    sink=sys.stderr,
-    level="ERROR",
-    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <4}</level> | <cyan>using_function:{function}</cyan> | <cyan>{file}:{line}</cyan> | <level>{message}</level>",
-    colorize=True,
-)
-
-
 class ResearchRequest(BaseModel):
     """触发研究运行的负载。"""
 
@@ -123,6 +114,26 @@ def create_app() -> FastAPI:
     @app.get("/healthz")
     def health_check() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/api/audio/latest")
+    def get_latest_audio() -> dict[str, Any]:
+        """获取最新生成的音频文件。"""
+        import glob
+        audio_dir = os.path.join(output_dir, "audio")
+        if not os.path.exists(audio_dir):
+            return {"file": None, "error": "音频目录不存在"}
+        
+        # 查找所有 podcast_*.mp3 文件
+        pattern = os.path.join(audio_dir, "podcast_*.mp3")
+        files = glob.glob(pattern)
+        
+        if not files:
+            return {"file": None, "error": "没有找到音频文件"}
+        
+        # 按修改时间排序，获取最新的
+        latest_file = max(files, key=os.path.getmtime)
+        filename = os.path.basename(latest_file)
+        return {"file": filename, "url": f"/output/audio/{filename}"}
 
     @app.post("/research", response_model=ResearchResponse)
     def run_research(payload: ResearchRequest) -> ResearchResponse:

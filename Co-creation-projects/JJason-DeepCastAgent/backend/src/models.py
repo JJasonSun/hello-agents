@@ -30,7 +30,6 @@ class SummaryState:
     """
 
     research_topic: str | None = field(default=None)  # 研究主题
-    search_query: str | None = field(default=None)  # 已弃用的占位符
     web_research_results: Annotated[list, operator.add] = field(default_factory=list)
     sources_gathered: Annotated[list, operator.add] = field(default_factory=list)
     research_loop_count: int = field(default=0)  # 研究循环次数
