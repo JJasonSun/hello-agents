@@ -2,45 +2,94 @@
 
 You are an expert AI agent working on **DeepCast**, an automated podcast generation engine based on the [HelloAgents](https://github.com/datawhalechina/Hello-Agents) framework.
 
-## 🏗 Big Picture Architecture
+## 🏗 Architecture Overview
 
-- **Backend (Python/FastAPI)**: Orchestrates the research-to-podcast workflow.
-  - **Core Agent (`DeepResearchAgent`)**: Found in [backend/src/agent.py](backend/src/agent.py). It coordinates multiple specialized agents.
-  - **Workflow**: `Planning` -> `Research (Loop)` -> `Summarization` -> `Reporting` -> `Scripting` -> `TTS Generation` -> `Synthesis`.
-  - **Services**: Decoupled logic in [backend/src/services/](backend/src/services/). Key integrations: Hybrid Search (Tavily + SerpApi), ECNU-TTS.
-  - **Storage**: JSON/MD notes in `backend/output/notes/`, MP3s in `backend/output/audio/`.
-- **Frontend (Vue 3/Vite/TypeScript)**: Real-time UI for monitoring progress and playing output.
-  - **Streaming**: Uses SSE via `fetch` at `/research/stream` to receive state updates.
+### Backend (Python 3.10+ / FastAPI)
+- **Entry Point**: [backend/src/main.py](backend/src/main.py) — FastAPI server at `localhost:8000`
+- **Core Orchestrator**: [backend/src/agent.py](backend/src/agent.py) — `DeepResearchAgent` coordinates the entire workflow
+- **Workflow Pipeline**: `Planning → Research (parallel threads) → Summarization → Reporting → Script → TTS → Audio Synthesis`
+- **Service Layer**: [backend/src/services/](backend/src/services/) — decoupled business logic:
+  - `planner.py` / `summarizer.py` / `reporter.py` — research phases
+  - `script_generator.py` — converts report to dialogue
+  - `audio_generator.py` — TTS per dialogue turn
+  - `audio_synthesizer.py` — FFmpeg stitching
+  - `search.py` — hybrid search via `hello_agents.tools.SearchTool`
 
-## 🛠 Critical Developer Workflows
+### Frontend (Vue 3 / Vite / TypeScript)
+- **SSE Streaming**: [frontend/src/services/api.ts](frontend/src/services/api.ts) connects to `/research/stream` via `fetch` + `ReadableStream`
+- **Event Types**: `status`, `todo_list`, `task_status`, `search_result`, `summary`, `report`, `script`, `audio_progress`, `done`, `error`, `cancelled`
 
-- **Backend Startup**: 
-  - Ensure `.env` is configured correctly (refer to [backend/env.example](backend/env.example)).
-  - Run: `cd backend && python src/main.py` (Default: `http://localhost:8000`).
-- **Frontend Startup**:
-  - Run: `cd frontend && npm install && npm run dev` (Default: `http://localhost:5173`).
-- **Environment Verification**:
-  - Use scripts in [backend/scripts/](backend/scripts/) to verify dependencies:
-    - `python backend/scripts/verify_ecnu_llm.py`: Test LLM access.
-    - `python backend/scripts/verify_ecnu_tts.py`: Test TTS service.
-    - `python backend/scripts/verify_ffmpeg.py`: Check FFmpeg installation (required for audio stitching).
+### Data Flow
+```
+User Topic → PlanningService (smart_llm) → TodoItems[]
+           → [Parallel Workers] SearchTool → SummarizationService (fast_llm)
+           → ReportingService (smart_llm) → ScriptGenerationService → AudioGenerationService → PodcastSynthesisService
+           → Output: report.md + podcast.mp3
+```
 
-## 💡 Key Patterns & Conventions
+## 🛠 Developer Workflows
 
-- **Agent Experts**: Defined in `DeepResearchAgent.__init__` using prompts from [backend/src/prompts.py](backend/src/prompts.py).
-  - Use `smart_llm` (`ecnu-reasoner`) for planning and reporting.
-  - Use `fast_llm` (`ecnu-max`) for search summarization and script generation.
-- **Structured Output**: 
-  - Heavily relies on Pydantic models in [backend/src/models.py](backend/src/models.py).
-  - When modifying agent responses, ensure the parser in [backend/src/agent.py](backend/src/agent.py) matches the new schema.
-- **Podcast Roles**: 
-  - Host: `xiayu` (Female/Professional). 
-  - Guest: `liwa` (Male/Knowledgeable).
-  - Voice assignments are handled in [backend/src/services/audio_generator.py](backend/src/services/audio_generator.py).
-- **Tooling**: Uses `HelloAgents`' `NoteTool` for persistence. All research finding should be logged as notes.
+```bash
+# Backend (requires .env configured from env.example)
+cd backend && python src/main.py
+
+# Frontend
+cd frontend && npm install && npm run dev
+
+# Verification scripts (run from project root)
+python backend/scripts/verify_ecnu_llm.py   # Test LLM
+python backend/scripts/verify_ecnu_tts.py   # Test TTS
+python backend/scripts/verify_ffmpeg.py     # Check FFmpeg
+python backend/scripts/verify_search.py     # Test search APIs
+```
+
+## 💡 Key Patterns
+
+### LLM Model Selection
+- **`smart_llm` (`ecnu-reasoner`)**: For complex reasoning — planning (`todo_agent`), reporting (`report_agent`)
+- **`fast_llm` (`ecnu-max`)**: For high-volume tasks — task summarization, script generation
+- Configured in [backend/src/config.py](backend/src/config.py) via `SMART_LLM_MODEL` / `FAST_LLM_MODEL`
+
+### Agent Definition Pattern
+Agents are created in `DeepResearchAgent.__init__` using `ToolAwareSimpleAgent`:
+```python
+self.todo_agent = self._create_tool_aware_agent(
+    name="研究规划专家",
+    system_prompt=todo_planner_system_prompt,  # from prompts.py
+    llm=self.smart_llm,
+)
+```
+
+### Structured Output
+- **Models**: [backend/src/models.py](backend/src/models.py) — `SummaryState`, `TodoItem`, `SummaryStateOutput`
+- **Prompts**: [backend/src/prompts.py](backend/src/prompts.py) — JSON output instructions embedded in system prompts
+- When adding new agent outputs, define Pydantic model + update corresponding prompt's `<输出格式>` section
+
+### Podcast Voices (TTS)
+| Role | Voice ID | Character |
+|------|----------|-----------|
+| Host (夏雨) | `xiayu` | Curious, humorous, audience proxy |
+| Guest (李华) | `liwa` | Knowledgeable expert |
+
+Voice mapping in [backend/src/services/audio_generator.py](backend/src/services/audio_generator.py) `_get_voice_for_role()`
+
+### Streaming Events
+The `run_stream()` method in `DeepResearchAgent` uses a multi-threaded worker pattern:
+- Each `TodoItem` gets its own thread
+- Events are pushed to a `Queue` and yielded to the SSE endpoint
+- Supports cancellation via `cancel()` / `is_cancelled()` / `CancelledException`
 
 ## ⚠️ Common Pitfalls
 
-- **FFmpeg**: Errors in `audio_synthesizer.py` often stem from missing or incorrectly configured FFmpeg path in `.env`.
-- **API Keys**: Ensure `TAVILY_API_KEY` or `SERP_API_KEY` is present; otherwise, research will yield no results.
-- **CORS**: The FastAPI app in `main.py` has CORS enabled for all origins, but changing this requires updating `frontend/vite.config.ts`.
+| Issue | Solution |
+|-------|----------|
+| FFmpeg errors in synthesis | Set `FFMPEG_PATH` in `.env` (Windows: `C:\ffmpeg\bin\ffmpeg.exe`) |
+| Empty search results | Ensure `TAVILY_API_KEY` or `SERP_API_KEY` is configured |
+| LLM timeout | Increase `LLM_TIMEOUT` (default 60s) for complex topics |
+| Notes not persisting | Check `NOTES_WORKSPACE` path exists and is writable |
+| CORS issues | Frontend proxy in `vite.config.ts`; backend allows all origins by default |
+
+## 📁 Output Artifacts
+- **Notes**: `backend/output/notes/` — `note_*.md` + `notes_index.json`
+- **Audio**: `backend/output/audio/` — individual MP3s + final `podcast_*.mp3`
+- Served statically at `/output/...` via FastAPI `StaticFiles`

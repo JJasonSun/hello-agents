@@ -204,32 +204,50 @@ def create_app() -> FastAPI:
                     # 将生成器转换为可在线程中运行的迭代
                     gen = agent.run_stream(payload.topic)
                     
-                    while True:
-                        # 检查客户端是否断开连接
-                        if await request.is_disconnected():
-                            logger.info("Client disconnected, cancelling research task")
-                            agent.cancel()
-                            break
-                        
-                        # 在线程池中获取下一个事件
-                        loop = asyncio.get_event_loop()
-                        try:
-                            event = await asyncio.wait_for(
-                                loop.run_in_executor(executor, lambda: next(gen, None)),
-                                timeout=1.0
-                            )
-                        except asyncio.TimeoutError:
-                            # 超时时继续检查连接状态
-                            continue
-                        
-                        if event is None:
-                            break
+                    # 启动一个后台任务来监控连接状态
+                    async def monitor_disconnect():
+                        while True:
+                            if await request.is_disconnected():
+                                logger.info("Client disconnected detected by monitor")
+                                agent.cancel()
+                                return True
+                            await asyncio.sleep(0.5)
+                    
+                    monitor_task = asyncio.create_task(monitor_disconnect())
+                    
+                    try:
+                        while True:
+                            # 检查是否已取消
+                            if agent.is_cancelled():
+                                logger.info("✅ 本次任务已取消")
+                                yield f'data: {{"type": "cancelled", "message": "研究任务已被用户取消"}}\\n\\n'
+                                break
                             
-                        yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-                        
-                        # 如果是完成或取消事件，退出循环
-                        if event.get("type") in ("done", "cancelled", "error"):
-                            break
+                            # 在线程池中获取下一个事件
+                            loop = asyncio.get_event_loop()
+                            try:
+                                event = await asyncio.wait_for(
+                                    loop.run_in_executor(executor, lambda: next(gen, None)),
+                                    timeout=0.5
+                                )
+                            except asyncio.TimeoutError:
+                                # 超时时继续检查连接状态
+                                continue
+                            
+                            if event is None:
+                                break
+                                
+                            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                            
+                            # 如果是完成或取消事件，退出循环
+                            if event.get("type") in ("done", "cancelled", "error"):
+                                break
+                    finally:
+                        monitor_task.cancel()
+                        try:
+                            await monitor_task
+                        except asyncio.CancelledError:
+                            pass
                             
             except Exception as exc:  # pragma: no cover - defensive guardrail
                 logger.exception("Streaming research failed")

@@ -10,26 +10,24 @@
           <p class="text-xl text-gray-400">进行深度研究并转化为引人入胜的播客</p>
         </div>
           
-        <div class="card bg-slate-800/50 backdrop-blur-sm shadow-2xl border border-slate-700">
-          <form @submit.prevent="startProduction" class="card-body p-6">
-            <div class="form-control mb-4">
+        <div class="card glass-panel rounded-2xl">
+          <form @submit.prevent="startProduction" class="card-body p-8">
+            <div class="form-control mb-6">
               <textarea 
                 v-model="form.topic" 
-                class="w-full textarea textarea-bordered bg-slate-900/50 border-slate-600 text-white text-lg leading-relaxed resize-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all" 
-                rows="4"
-                placeholder="💡请输入播客主题（例如：AI Agent 的发展趋势）"
+                class="w-full textarea textarea-bordered h-32 text-lg leading-relaxed resize-none macos-input rounded-xl" 
+                placeholder="💡 请输入播客主题（例如：AI Agent 的发展趋势）"
                 required
                 @keydown.enter.prevent="startProduction"></textarea>
             </div>
               
-            <div class="alert bg-blue-500/10 border border-blue-500/30 mb-6">
-              <span class="text-sm text-blue-300">🔍 使用混合搜索引擎 (Tavily + SerpApi)</span>
+            <div class="alert bg-blue-500/10 border border-blue-500/20 mb-8 rounded-xl">
+              <span class="text-sm text-blue-300 font-medium">🔍 使用混合搜索引擎 (Tavily + SerpApi)</span>
             </div>
 
             <button 
-              class="w-full btn-md text-lg font-semibold rounded-lg bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-600 hover:from-blue-600 hover:via-indigo-600 hover:to-purple-700 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none" 
-              :disabled="!form.topic.trim()"
-              style="padding: 0.75rem;">
+              class="btn btn-lg w-full font-semibold rounded-xl macos-btn-primary border-0" 
+              :disabled="!form.topic.trim()">
               ✨ 开始制作播客
             </button>
           </form>
@@ -41,17 +39,17 @@
     <div v-else-if="currentView === 'producing'" class="min-h-screen p-6">
       <div class="max-w-7xl mx-auto">
       <!-- Navbar / Header -->
-      <div class="bg-slate-800/50 backdrop-blur-sm rounded-lg shadow-xl mb-6 px-6 py-4 border border-slate-700">
+      <div class="nav-glass rounded-xl shadow-lg mb-6 px-6 py-4">
         <div class="flex items-center justify-between gap-4">
           <div class="flex items-center gap-3">
-            <span class="text-3xl">🎙️</span>
-            <span class="text-2xl font-bold text-white">DeepCast</span>
+            <span class="text-3xl filter drop-shadow-md">🎙️</span>
+            <span class="text-2xl font-bold text-white tracking-tight">DeepCast</span>
           </div>
           <div class="flex items-center gap-3">
-            <button v-if="reportReady" class="btn btn-outline btn-info btn-sm" @click="downloadReport">
+            <button v-if="reportReady" class="btn btn-ghost btn-sm text-blue-300 hover:bg-white/5" @click="downloadReport">
               📄 下载研究报告
             </button>
-            <button v-if="!podcastReady" class="btn btn-error btn-sm" @click="cancelProduction">
+            <button v-if="!podcastReady" class="btn btn-ghost btn-sm text-red-400 hover:bg-white/5" @click="cancelProduction">
               取消制作
             </button>
           </div>
@@ -63,56 +61,56 @@
         
         <!-- Left Column: Progress Steps -->
         <div class="lg:col-span-1">
-          <div class="card bg-slate-800/50 backdrop-blur-sm shadow-lg border border-slate-700 h-[500px]">
+          <div class="card glass-panel h-[500px] rounded-xl">
             <div class="card-body p-6 relative overflow-hidden">
                <!-- Decorative element -->
-               <div class="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl"></div>
-               <div class="absolute bottom-0 left-0 -ml-8 -mb-8 w-32 h-32 bg-purple-500/10 rounded-full blur-2xl"></div>
+               <div class="absolute top-0 right-0 -mr-8 -mt-8 w-40 h-40 bg-blue-500/20 rounded-full blur-3xl"></div>
+               <div class="absolute bottom-0 left-0 -ml-8 -mb-8 w-40 h-40 bg-purple-500/20 rounded-full blur-3xl"></div>
 
-              <h2 class="text-xl font-bold text-white mb-6 flex items-center justify-center gap-3 z-10">
-                <div class="p-2 bg-slate-700/50 rounded-lg">
+              <h2 class="text-xl font-bold text-white mb-8 flex items-center justify-center gap-3 z-10">
+                <div class="p-2 bg-white/10 rounded-lg backdrop-blur-md shadow-inner border border-white/5">
                     <span v-if="productionStage === 'done'" class="text-2xl">✅</span>
                     <span v-else class="text-3xl animate-spin-slow inline-block">🔄</span>
                 </div>
-                <span>制作流程</span>
+                <span class="tracking-wide">制作流程</span>
               </h2>
               
-              <div class="flex-1 w-full flex justify-center pl-8">
+              <div class="flex-1 w-full flex justify-center pl-4">
                   <ul class="steps steps-vertical font-medium w-full h-full justify-evenly">
-                    <li class="step gap-2" :class="getStepClass('research')">
+                    <li class="step gap-3" :class="getStepClass('research')">
                       <div class="flex flex-col text-left py-2 min-w-[120px]">
                         <div class="flex items-center gap-2">
-                            <span class="text-lg" :class="{ 'animate-bounce': productionStage === 'research' }">🔍</span>
-                            <span class="font-bold">深度研究</span>
+                            <span class="text-xl filter drop-shadow" :class="{ 'animate-bounce': productionStage === 'research' }">🔍</span>
+                            <span class="font-bold text-gray-200">深度研究</span>
                         </div>
-                        <span class="text-xs opacity-50 font-normal ml-7">网络搜索 & 信息聚合</span>
+                        <span class="text-xs text-gray-400 font-normal ml-8 mt-1">网络搜索 & 信息聚合</span>
                       </div>
                     </li>
-                    <li class="step gap-2" :class="getStepClass('script')">
+                    <li class="step gap-3" :class="getStepClass('script')">
                         <div class="flex flex-col text-left py-2 min-w-[120px]">
                             <div class="flex items-center gap-2">
-                                <span class="text-lg" :class="{ 'animate-bounce': productionStage === 'script' }">✍️</span>
-                                <span class="font-bold">剧本创作</span>
+                                <span class="text-xl filter drop-shadow" :class="{ 'animate-bounce': productionStage === 'script' }">✍️</span>
+                                <span class="font-bold text-gray-200">剧本创作</span>
                             </div>
-                            <span class="text-xs opacity-50 font-normal ml-7">生成对话 & 角色分配</span>
+                            <span class="text-xs text-gray-400 font-normal ml-8 mt-1">生成对话 & 角色分配</span>
                         </div>
                     </li>
-                    <li class="step gap-2" :class="getStepClass('audio')">
+                    <li class="step gap-3" :class="getStepClass('audio')">
                         <div class="flex flex-col text-left py-2 min-w-[120px]">
                             <div class="flex items-center gap-2">
-                                <span class="text-lg" :class="{ 'animate-bounce': productionStage === 'audio' }">🎵</span>
-                                <span class="font-bold">音频合成</span>
+                                <span class="text-xl filter drop-shadow" :class="{ 'animate-bounce': productionStage === 'audio' }">🎵</span>
+                                <span class="font-bold text-gray-200">音频合成</span>
                             </div>
-                            <span class="text-xs opacity-50 font-normal ml-7">TTS 语音生成 & 拼接</span>
+                            <span class="text-xs text-gray-400 font-normal ml-8 mt-1">TTS 语音生成 & 拼接</span>
                         </div>
                     </li>
-                    <li class="step gap-2" :class="{ 'step-primary': podcastReady || productionStage === 'done' }">
+                    <li class="step gap-3" :class="{ 'step-primary': podcastReady || productionStage === 'done' }">
                         <div class="flex flex-col text-left py-2 min-w-[120px]">
                             <div class="flex items-center gap-2">
-                                <span class="text-lg" :class="{ 'animate-pulse': podcastReady }">🎉</span>
-                                <span class="font-bold">完成</span>
+                                <span class="text-xl filter drop-shadow" :class="{ 'animate-pulse': podcastReady }">🎉</span>
+                                <span class="font-bold text-gray-200">完成</span>
                             </div>
-                            <span class="text-xs opacity-50 font-normal ml-7">播放 & 下载播客</span>
+                            <span class="text-xs text-gray-400 font-normal ml-8 mt-1">播放 & 下载播客</span>
                         </div>
                     </li>
                   </ul>
@@ -164,20 +162,23 @@
           </div>
 
           <!-- Result Actions -->
-          <div v-if="podcastReady" class="flex gap-2">
-               <a :href="audioUrl" download class="btn btn-primary btn-sm flex-1">
+          <div v-if="podcastReady" class="flex gap-4">
+               <a :href="audioUrl" download class="btn macos-btn-primary flex-1 btn-lg text-lg rounded-xl border-0">
                   ⬇️ 下载 MP3
                </a>
-               <button class="btn btn-secondary btn-sm" @click="currentView = 'player'">
-                  🎧 播放
+               <button class="btn glass text-white flex-1 btn-lg text-lg rounded-xl" @click="currentView = 'player'">
+                  🎧 进入播放器
                </button>
           </div>
           
           <!-- Inline Player -->
-           <div v-if="podcastReady" class="card bg-slate-800/50 backdrop-blur-sm shadow-lg border border-slate-700">
+           <div v-if="podcastReady" class="card glass-panel rounded-xl mt-2">
              <div class="card-body p-4">
-               <h3 class="text-sm font-bold text-white mb-2">🎧 试听</h3>
-               <audio class="w-full" :src="audioUrl" controls></audio>
+               <div class="flex items-center gap-3 mb-2">
+                 <span class="text-xl">🎧</span>
+                 <h3 class="text-sm font-bold text-gray-200">快速试听</h3>
+               </div>
+               <audio class="w-full opacity-90 hover:opacity-100 transition-opacity" :src="audioUrl" controls></audio>
              </div>
            </div>
 
@@ -187,36 +188,47 @@
     </div>
 
     <!-- View 3: Player -->
-    <div v-else-if="currentView === 'player'" class="hero min-h-screen bg-base-200">
+    <div v-else-if="currentView === 'player'" class="hero min-h-screen">
       <div class="hero-content flex-col lg:flex-row-reverse gap-8 w-full max-w-6xl items-start">
          <!-- Right: Report -->
-         <div class="card bg-base-100 shadow-xl flex-1 h-[70vh] w-full lg:w-3/5 overflow-hidden">
-            <div class="card-body p-0 flex flex-col h-full">
-              <div class="p-4 border-b bg-base-100 sticky top-0 z-10">
-                <h2 class="card-title">📄 研究报告</h2>
+         <div class="card glass-panel shadow-2xl flex-1 h-[70vh] w-full lg:w-3/5 overflow-hidden rounded-2xl border border-white/10">
+            <div class="card-body p-0 flex flex-col h-full bg-black/20">
+              <div class="p-6 border-b border-white/10 sticky top-0 z-10 bg-black/40 backdrop-blur-md">
+                <div class="flex items-center justify-between">
+                  <h2 class="card-title text-white">📄 研究报告</h2>
+                  <button class="btn btn-xs btn-ghost text-white/50" @click="downloadReport">下载</button>
+                </div>
               </div>
-              <div class="overflow-y-auto p-6 custom-scrollbar flex-1">
-                <article class="prose prose-sm dark:prose-invert max-w-none" v-html="md.render(reportMarkdown)"></article>
+              <div class="overflow-y-auto p-8 custom-scrollbar flex-1 text-gray-200">
+                <article class="prose prose-sm prose-invert max-w-none" v-html="md.render(reportMarkdown)"></article>
               </div>
             </div>
          </div>
 
          <!-- Left: Player -->
-         <div class="card bg-base-100 shadow-xl flex-shrink-0 w-full lg:w-2/5 text-center h-auto">
-            <figure class="px-10 pt-10">
+         <div class="card glass-panel shadow-2xl flex-shrink-0 w-full lg:w-2/5 text-center h-auto rounded-2xl border border-white/10">
+            <figure class="px-10 pt-12 pb-4">
               <div class="avatar placeholder">
-                <div class="bg-neutral text-neutral-content rounded-full w-48 h-48 ring ring-primary ring-offset-base-100 ring-offset-2 flex items-center justify-center relative overflow-hidden">
-                   <!-- 简单的唱片动画 -->
-                   <div class="absolute inset-0 border-[10px] border-neutral-800 rounded-full opacity-30" :class="{ 'animate-spin': isPlaying }" style="animation-duration: 4s;"></div>
-                   <span class="text-5xl font-bold z-10">DC</span>
+                <div class="bg-black/40 text-white rounded-full w-48 h-48 ring-4 ring-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)] flex items-center justify-center relative overflow-hidden backdrop-blur-md">
+                   <!-- Vinyl Animation -->
+                   <div class="absolute inset-0 border-[2px] border-white/5 rounded-full" style="margin: 2px"></div>
+                   <div class="absolute inset-0 border-[2px] border-white/5 rounded-full" style="margin: 10px"></div>
+                   <div class="absolute inset-0 border-[2px] border-white/5 rounded-full" style="margin: 20px"></div>
+                   
+                   <div class="absolute inset-0 border-[10px] border-black/60 rounded-full opacity-40" :class="{ 'animate-spin': isPlaying }" style="animation-duration: 4s;"></div>
+                   
+                   <!-- Center Label -->
+                   <div class="z-10 w-16 h-16 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 shadow-inner flex items-center justify-center">
+                     <span class="text-xl font-bold text-white">DC</span>
+                   </div>
                 </div>
               </div>
             </figure>
-            <div class="card-body items-center text-center">
-              <h2 class="card-title text-2xl">{{ form.topic }}</h2>
-              <p class="opacity-70">DeepCast Original Podcast</p>
+            <div class="card-body items-center text-center pt-2">
+              <h2 class="card-title text-2xl text-white font-bold drop-shadow-md">{{ form.topic }}</h2>
+              <p class="text-blue-200/60 text-sm font-medium tracking-widest uppercase mb-6">DeepCast Original</p>
               
-              <div class="w-full mt-8 bg-base-200 rounded-box p-4">
+              <div class="w-full bg-black/30 rounded-xl p-4 border border-white/5 shadow-inner">
                  <audio 
                     ref="audioPlayer" 
                     :src="audioUrl" 
@@ -227,11 +239,11 @@
                  ></audio>
               </div>
               
-              <div class="card-actions mt-6 w-full gap-4">
-                <a :href="audioUrl" download class="btn btn-primary w-full">
+              <div class="card-actions mt-8 w-full gap-3 flex-col">
+                <a :href="audioUrl" download class="btn macos-btn-primary w-full border-0 rounded-xl text-lg h-12">
                   ⬇️ 下载 MP3
                 </a>
-                <button class="btn btn-outline w-full" @click="resetApp">
+                <button class="btn btn-ghost text-white/50 hover:text-white w-full" @click="resetApp">
                   🪄 制作新播客
                 </button>
               </div>
@@ -517,17 +529,20 @@ function handleStreamEvent(event: ResearchStreamEvent) {
 
 function cancelProduction() {
   if (confirm("确定要取消制作吗？")) {
+    addLog("🛑 用户请求取消制作...");
     if (abortController) {
       abortController.abort();
       abortController = null;
+      addLog("✅ 已发送取消请求到后端");
     }
     stopWaitingAnimation();
+    productionStage.value = "done";
     
     // 给一点时间让状态重置
     setTimeout(() => {
       currentView.value = "setup";
       currentStatusMessage.value = "";
-    }, 100);
+    }, 1000);
   }
 }
 
@@ -661,5 +676,57 @@ function downloadReport() {
 
 .animate-spin-slow {
   animation: spin-slow 3s linear infinite;
+}
+
+/* macOS / Glassmorphism Design System */
+.glass-panel {
+  background: rgba(30, 30, 30, 0.7);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+.macos-input {
+  background: rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #fff !important;
+  transition: all 0.3s ease;
+}
+
+.macos-input:focus {
+  background: rgba(0, 0, 0, 0.4) !important;
+  border-color: #0A84FF !important; /* macOS Blue */
+  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2);
+  outline: none;
+}
+
+.macos-btn-primary {
+  background: linear-gradient(180deg, #0A84FF 0%, #007AFF 100%);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2), inset 0 1px 1px rgba(255,255,255,0.2);
+  transition: all 0.2s;
+}
+.macos-btn-primary:hover {
+  filter: brightness(1.05);
+  transform: translateY(-0.5px);
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3), inset 0 1px 1px rgba(255,255,255,0.2);
+}
+.macos-btn-primary:active {
+  transform: translateY(0.5px);
+  filter: brightness(0.95);
+}
+.macos-btn-primary:disabled {
+  opacity: 0.5;
+  filter: grayscale(0.5);
+  transform: none;
+  cursor: not-allowed;
+}
+
+.nav-glass {
+  background: rgba(40, 40, 40, 0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 </style>
